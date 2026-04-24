@@ -52,16 +52,15 @@ public class TravelManager : MonoBehaviour
                 if (Physics.Raycast(prevPoint, dir, out RaycastHit hit, dir.magnitude))
                 {
                     teleportTarget = hit.point;
-
                     for (int j = i; j < arcSegments; j++)
                         lineRenderer.SetPosition(j, hit.point);
-
                     validTarget = true;
                     break;
                 }
             }
         }
 
+        Debug.Log("Valid target: " + validTarget + " Controller pos: " + rightHandController.position);
         lineRenderer.enabled = true;
     }
 
@@ -78,8 +77,11 @@ public class TravelManager : MonoBehaviour
 
     void Teleport()
     {
-        Vector3 cameraOffset = Camera.main.transform.position - xrOrigin.position;
-        cameraOffset.y = 0;
-        xrOrigin.position = teleportTarget - cameraOffset;
+        Debug.Log("Teleporting to: " + teleportTarget);
+        xrOrigin.position = new Vector3(
+            teleportTarget.x,
+            xrOrigin.position.y,
+            teleportTarget.z
+        );
     }
 }

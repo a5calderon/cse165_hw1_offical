@@ -1516,7 +1516,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TravelManager
   rightHandController: {fileID: 1050043195}
   xrOrigin: {fileID: 1807339757}
-  arcVelocity: 3
+  arcVelocity: 10
   arcSegments: 30
   lineRenderer: {fileID: 1769830872}
 --- !u!4 &1807339757 stripped
