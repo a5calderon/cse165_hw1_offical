@@ -1,55 +1,85 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
+using UnityEngine.XR;
 
 public class TravelManager : MonoBehaviour
 {
+    [Header("References")]
+    public Transform rightHandController;
     public Transform xrOrigin;
-    public Transform cameraTransform;
+
+    [Header("Arc Settings")]
+    public float arcVelocity = 10f;
+    public int arcSegments = 30;
+    public LineRenderer lineRenderer;
+
+    private bool validTarget = false;
+    private Vector3 teleportTarget;
+
+    void Awake()
+    {
+        if (lineRenderer != null)
+            lineRenderer.positionCount = arcSegments;
+    }
 
     void Update()
     {
-        if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
-        {
-            Teleport();
-        }
+        if (lineRenderer == null || rightHandController == null) return;
+        DrawArc();
+        CheckGrip();
     }
 
-    public void Teleport()
+    void DrawArc()
     {
-        if (xrOrigin == null || cameraTransform == null)
+        lineRenderer.positionCount = arcSegments;
+        Vector3 startPos = rightHandController.position;
+        Vector3 aimDir = Quaternion.AngleAxis(-30f, rightHandController.right) * rightHandController.forward;
+        Vector3 startVel = aimDir * arcVelocity;
+
+        validTarget = false;
+
+        for (int i = 0; i < arcSegments; i++)
         {
-            Debug.LogError("XR Origin or Camera not assigned!");
-            return;
+            float t = i * 0.05f;
+            Vector3 point = startPos + startVel * t + 0.5f * Physics.gravity * t * t;
+            lineRenderer.SetPosition(i, point);
+
+            if (i > 0)
+            {
+                float tPrev = (i - 1) * 0.05f;
+                Vector3 prevPoint = startPos + startVel * tPrev + 0.5f * Physics.gravity * tPrev * tPrev;
+                Vector3 dir = point - prevPoint;
+
+                if (Physics.Raycast(prevPoint, dir, out RaycastHit hit, dir.magnitude))
+                {
+                    teleportTarget = hit.point;
+
+                    for (int j = i; j < arcSegments; j++)
+                        lineRenderer.SetPosition(j, hit.point);
+
+                    validTarget = true;
+                    break;
+                }
+            }
         }
 
-        // 🔥 STEP 1: start slightly in front of camera
-        Vector3 origin =
-            cameraTransform.position +
-            cameraTransform.forward * 0.5f +
-            Vector3.up * 0.2f;
+        lineRenderer.enabled = true;
+    }
 
-        // 🔥 STEP 2: force downward ray (THIS guarantees floor hit)
-        Vector3 direction = Vector3.down;
+    void CheckGrip()
+    {
+        InputDevice rightDevice = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
+        rightDevice.TryGetFeatureValue(CommonUsages.gripButton, out bool gripPressed);
 
-        Debug.DrawRay(origin, direction * 50f, Color.green, 2f);
+        bool keyPressed = UnityEngine.InputSystem.Keyboard.current.gKey.wasPressedThisFrame;
 
-        if (Physics.Raycast(origin, direction, out RaycastHit hit, 100f))
-        {
-            Debug.Log("HIT: " + hit.collider.name);
+        if ((gripPressed || keyPressed) && validTarget)
+            Teleport();
+    }
 
-            Vector3 target = new Vector3(
-                hit.point.x,
-                xrOrigin.position.y,
-                hit.point.z
-            );
-
-            Debug.Log("TELEPORT TARGET: " + target);
-
-            xrOrigin.position = target;
-        }
-        else
-        {
-            Debug.Log("NO HIT - ray missed floor (check collider)");
-        }
+    void Teleport()
+    {
+        Vector3 cameraOffset = Camera.main.transform.position - xrOrigin.position;
+        cameraOffset.y = 0;
+        xrOrigin.position = teleportTarget - cameraOffset;
     }
 }
