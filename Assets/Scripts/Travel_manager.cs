@@ -14,6 +14,7 @@ public class TravelManager : MonoBehaviour
 
     private bool validTarget = false;
     private Vector3 teleportTarget;
+    private bool triggerWasPressed = false;
 
     void Awake()
     {
@@ -25,7 +26,7 @@ public class TravelManager : MonoBehaviour
     {
         if (lineRenderer == null || rightHandController == null) return;
         DrawArc();
-        CheckGrip();
+        CheckTrigger();
     }
 
     void DrawArc()
@@ -60,24 +61,23 @@ public class TravelManager : MonoBehaviour
             }
         }
 
-        Debug.Log("Valid target: " + validTarget + " Controller pos: " + rightHandController.position);
         lineRenderer.enabled = true;
     }
 
-    void CheckGrip()
+    void CheckTrigger()
     {
         InputDevice rightDevice = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
-        rightDevice.TryGetFeatureValue(CommonUsages.gripButton, out bool gripPressed);
+        rightDevice.TryGetFeatureValue(CommonUsages.triggerButton, out bool triggerPressed);
 
-        bool keyPressed = UnityEngine.InputSystem.Keyboard.current.gKey.wasPressedThisFrame;
+        bool triggerDown = (triggerPressed && !triggerWasPressed) || Input.GetKeyDown(KeyCode.F);
+        triggerWasPressed = triggerPressed;
 
-        if ((gripPressed || keyPressed) && validTarget)
+        if (triggerDown && validTarget)
             Teleport();
     }
 
     void Teleport()
     {
-        Debug.Log("Teleporting to: " + teleportTarget);
         xrOrigin.position = new Vector3(
             teleportTarget.x,
             xrOrigin.position.y,
