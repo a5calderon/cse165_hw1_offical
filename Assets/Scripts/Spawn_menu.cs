@@ -111,39 +111,47 @@ public class SpawnMenu : MonoBehaviour
     }
 
     void PlaceObject()
+{
+    if (heldObject == null) return;
+
+    Vector3 rayOrigin = new Vector3(heldObject.transform.position.x, 10f, heldObject.transform.position.z);
+    int floorMask = LayerMask.GetMask("Floor");
+
+    if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, 20f, floorMask))
     {
-        if (heldObject == null) return;
+        heldObject.transform.position = new Vector3(
+            heldObject.transform.position.x,
+            hit.point.y + 1.5f,
+            heldObject.transform.position.z
+        );
+    }
+    else
+    {
+        Debug.Log("No floor detected!");
+        return;
+    }
 
-        // raycast down to find floor
-        if (Physics.Raycast(heldObject.transform.position, Vector3.down, out RaycastHit hit, 10f))
-        {
-            heldObject.transform.position = new Vector3(
-                heldObject.transform.position.x,
-                hit.point.y,
-                heldObject.transform.position.z
-            );
-        }
+    heldObject.transform.rotation = Quaternion.Euler(0, heldObject.transform.rotation.eulerAngles.y, 0);
+    heldObject.layer = 0;
 
-        // keep upright
-        heldObject.transform.rotation = Quaternion.Euler(0, heldObject.transform.rotation.eulerAngles.y, 0);
+    Rigidbody rb = heldObject.GetComponent<Rigidbody>();
+    if (rb != null)
+    {
+        rb.linearVelocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+        rb.linearDamping = 5f;
+        rb.angularDamping = 5f;
+        rb.isKinematic = false;
+        rb.constraints = RigidbodyConstraints.FreezeRotationX | 
+                         RigidbodyConstraints.FreezeRotationZ;
+    }
 
-        heldObject.layer = 0;
+    if (placementRay != null)
+        placementRay.enabled = false;
 
-        Rigidbody rb = heldObject.GetComponent<Rigidbody>();
-        if (rb != null)
-        {
-            rb.linearVelocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
-            rb.isKinematic = false;
-        }
-
-        if (placementRay != null)
-            placementRay.enabled = false;
-
-        heldObject = null;
-        isHolding = false;
+    heldObject = null;
+    isHolding = false;
 }
-
     public void SpawnInstant(int index)
     {
         if (isHolding && heldObject != null)
@@ -159,9 +167,13 @@ public class SpawnMenu : MonoBehaviour
             ? cam.transform.position + cam.transform.forward * 1.5f
             : rightHandController.position;
 
-        Rigidbody rb = obj.GetComponent<Rigidbody>();
+        Rigidbody rb = heldObject.GetComponent<Rigidbody>();
         if (rb != null)
-            rb.isKinematic = true;
+        {
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+            rb.isKinematic = false;
+        }
 
         heldObject = obj;
         isHolding  = true;
@@ -180,11 +192,10 @@ public class SpawnMenu : MonoBehaviour
 
         Camera cam = Camera.main;
         obj.transform.position = cam != null
-            ? cam.transform.position + cam.transform.forward * 1.5f
+            ? cam.transform.position + cam.transform.forward * 2.5f + Vector3.up * 0.5f
             : rightHandController != null
-                ? rightHandController.position
+                ? rightHandController.position + Vector3.up * 0.5f
                 : Vector3.zero;
-
         if (!obj.TryGetComponent<Rigidbody>(out var rb))
             rb = obj.AddComponent<Rigidbody>();
         rb.isKinematic = true;
