@@ -22,11 +22,9 @@ public class SpawnMenu : MonoBehaviour
     [Header("Placement")]
     public LineRenderer placementRay;
 
-    // ── XR Input Actions (assign in Inspector) ────────────────────
     [Header("XR Input Actions")]
     public InputActionReference leftTriggerAction;
     public InputActionReference leftGripAction;
-    public InputActionReference rightTriggerAction;
     public InputActionReference rightGripAction;
 
     // ── spawn / hold state ────────────────────────────────────────
@@ -49,7 +47,6 @@ public class SpawnMenu : MonoBehaviour
     // ── input edge-detect state ───────────────────────────────────
     private bool leftTriggerWasPressed  = false;
     private bool leftGripWasPressed     = false;
-    private bool rightTriggerWasPressed = false;
     private bool rightGripWasPressed    = false;
     private bool leftGripHeld           = false;
 
@@ -59,7 +56,7 @@ public class SpawnMenu : MonoBehaviour
     private bool       menuVisible    = false;
     private bool       menuBuilt      = false;
 
-    // ── colors ───────────────────────────────────────────────────
+    // ── colors ────────────────────────────────────────────────────
     static readonly Color BG_DARK       = new Color(0.08f, 0.10f, 0.14f, 0.95f);
     static readonly Color PURPLE_BORDER = new Color(0.72f, 0.20f, 1.00f, 1f);
     static readonly Color TEAL_ACTIVE   = new Color(0.15f, 0.50f, 0.50f, 1f);
@@ -75,12 +72,11 @@ public class SpawnMenu : MonoBehaviour
         {
             leftTriggerAction?.action.Enable();
             leftGripAction?.action.Enable();
-            rightTriggerAction?.action.Enable();
             rightGripAction?.action.Enable();
         }
         catch (System.Exception e)
         {
-            Debug.LogWarning("[SpawnMenu] OnEnable input action error: " + e.Message);
+            Debug.LogWarning("[SpawnMenu] OnEnable error: " + e.Message);
         }
     }
 
@@ -90,12 +86,11 @@ public class SpawnMenu : MonoBehaviour
         {
             leftTriggerAction?.action.Disable();
             leftGripAction?.action.Disable();
-            rightTriggerAction?.action.Disable();
             rightGripAction?.action.Disable();
         }
         catch (System.Exception e)
         {
-            Debug.LogWarning("[SpawnMenu] OnDisable input action error: " + e.Message);
+            Debug.LogWarning("[SpawnMenu] OnDisable error: " + e.Message);
         }
     }
 
@@ -120,7 +115,6 @@ public class SpawnMenu : MonoBehaviour
         menuBuilt = true;
     }
 
-    // ── Reads an InputAction OR keyboard key ─────────────────────
     bool ReadButton(InputActionReference actionRef, KeyCode fallback)
     {
         if (actionRef != null && actionRef.action != null)
@@ -136,26 +130,23 @@ public class SpawnMenu : MonoBehaviour
         if (!menuBuilt) return;
 
         // ── Read current button states ────────────────────────────
-        bool leftTrigger  = ReadButton(leftTriggerAction,  KeyCode.G);
-        bool leftGrip     = ReadButton(leftGripAction,     KeyCode.H);
-        bool rightTrigger = ReadButton(rightTriggerAction, KeyCode.F);
-        bool rightGrip    = ReadButton(rightGripAction,    KeyCode.T);
+        bool leftTrigger  = ReadButton(leftTriggerAction, KeyCode.G);
+        bool leftGrip     = ReadButton(leftGripAction,    KeyCode.H);
+        bool rightGrip    = ReadButton(rightGripAction,   KeyCode.T);
 
-        // ── Edge detect (pressed this frame) ─────────────────────
-        bool leftTriggerDown  = leftTrigger  && !leftTriggerWasPressed;
-        bool leftGripDown     = leftGrip     && !leftGripWasPressed;
-        bool rightTriggerDown = rightTrigger && !rightTriggerWasPressed;
-        bool rightGripDown    = rightGrip    && !rightGripWasPressed;
+        // ── Edge detect ───────────────────────────────────────────
+        bool leftTriggerDown = leftTrigger && !leftTriggerWasPressed;
+        bool leftGripDown    = leftGrip    && !leftGripWasPressed;
+        bool rightGripDown   = rightGrip   && !rightGripWasPressed;
 
-        leftTriggerWasPressed  = leftTrigger;
-        leftGripWasPressed     = leftGrip;
-        rightTriggerWasPressed = rightTrigger;
-        rightGripWasPressed    = rightGrip;
-        leftGripHeld           = leftGrip;
+        leftTriggerWasPressed = leftTrigger;
+        leftGripWasPressed    = leftGrip;
+        rightGripWasPressed   = rightGrip;
+        leftGripHeld          = leftGrip;
 
         isBusy = isHolding || selectedObject != null || menuVisible;
 
-        // HOLDING STATE
+        // ── HOLDING STATE ─────────────────────────────────────────
         if (isHolding && heldObject != null)
         {
             Camera cam = Camera.main;
@@ -179,7 +170,7 @@ public class SpawnMenu : MonoBehaviour
             if (leftGripHeld)
                 heldObject.transform.Rotate(Vector3.up, 90f * Time.deltaTime);
 
-            // Right grip down → place
+            // Right grip → place
             if (rightGripDown)
                 PlaceObject();
 
@@ -187,9 +178,10 @@ public class SpawnMenu : MonoBehaviour
             return;
         }
 
-        // SELECTED STATE
+        // ── SELECTED STATE ────────────────────────────────────────
         if (selectedObject != null)
         {
+            // Left grip held → show scale UI
             if (leftGripHeld)
                 ShowScaleUI(selectedObject);
             else
@@ -203,37 +195,38 @@ public class SpawnMenu : MonoBehaviour
                 return;
             }
 
-            // Right trigger → raycast reselect or deselect
-            if (rightTriggerDown)
-                TryRaycastSelectOrDeselect();
-
-            // Right grip → pick up
+            // Right grip → pick up selected object
             if (rightGripDown)
                 PickUpSelectedObject();
 
             return;
         }
 
-        // IDLE STATE
+        // ── IDLE STATE ────────────────────────────────────────────
         HideScaleUI();
 
         if (placementRay != null)
             placementRay.enabled = false;
 
-        // Left trigger → toggle spawn menu
+        // Left trigger → toggle menu OR select object if menu closed
         if (leftTriggerDown)
-            ToggleMenu();
+        {
+            if (menuVisible)
+                SetMenuVisible(false);
+            else
+                ToggleMenu();
+        }
 
-        // Right trigger → raycast select (Method 2)
-        if (rightTriggerDown && !menuVisible)
-            TryRaycastSelect();
-
-        // Gaze select (Method 1)
+        // Gaze select (method 1) — only when menu closed
         if (!menuVisible)
             UpdateGazeSelect();
+
+        // Left trigger raycast select (method 2) — only when menu closed
+        if (leftTriggerDown && !menuVisible)
+            TryRaycastSelect();
     }
 
-    //  PICK UP SELECTED OBJECT
+    // ── PICK UP ───────────────────────────────────────────────────
     void PickUpSelectedObject()
     {
         if (selectedObject == null) return;
@@ -251,7 +244,7 @@ public class SpawnMenu : MonoBehaviour
         isBusy     = true;
     }
 
-    //  SELECTION METHOD 1 – GAZE 
+    // ── SELECTION METHOD 1: GAZE ──────────────────────────────────
     void UpdateGazeSelect()
     {
         Camera cam = Camera.main;
@@ -286,11 +279,12 @@ public class SpawnMenu : MonoBehaviour
         gazeTimer = 0f;
     }
 
-    //  SELECTION METHOD 2 – RIGHT TRIGGER RAYCAST
+    // ── SELECTION METHOD 2: LEFT TRIGGER RAYCAST ──────────────────
     void TryRaycastSelect()
     {
-        Ray ray = (rightHandController != null)
-            ? new Ray(rightHandController.position, rightHandController.forward)
+        // Use left hand controller ray, fall back to camera
+        Ray ray = (leftHandController != null)
+            ? new Ray(leftHandController.position, leftHandController.forward)
             : new Ray(Camera.main.transform.position, Camera.main.transform.forward);
 
         if (Physics.Raycast(ray, out RaycastHit hit, 15f))
@@ -301,25 +295,7 @@ public class SpawnMenu : MonoBehaviour
         }
     }
 
-    void TryRaycastSelectOrDeselect()
-    {
-        Ray ray = (rightHandController != null)
-            ? new Ray(rightHandController.position, rightHandController.forward)
-            : new Ray(Camera.main.transform.position, Camera.main.transform.forward);
-
-        if (Physics.Raycast(ray, out RaycastHit hit, 15f))
-        {
-            Rigidbody rb = hit.collider.GetComponentInParent<Rigidbody>();
-            if (rb != null && !rb.isKinematic && rb.gameObject != selectedObject)
-            {
-                SelectObject(rb.gameObject);
-                return;
-            }
-        }
-        Deselect();
-    }
-
-    //  HIGHLIGHT
+    // ── HIGHLIGHT ─────────────────────────────────────────────────
     void SelectObject(GameObject obj)
     {
         if (selectedObject == obj) return;
@@ -371,9 +347,7 @@ public class SpawnMenu : MonoBehaviour
         }
     }
 
-    // ═════════════════════════════════════════════════════════════
-    //  SCALE UI
-    // ═════════════════════════════════════════════════════════════
+    // ── SCALE UI ──────────────────────────────────────────────────
     void ShowScaleUI(GameObject target)
     {
         if (scaleUICanvas == null) BuildScaleUI();
@@ -419,8 +393,7 @@ public class SpawnMenu : MonoBehaviour
         AddOutline(bg, PURPLE_BORDER, 4f);
 
         MakeLabel(bg.transform, "SCALE OBJECT", 22, new Vector2(0, 180), new Vector2(700, 50));
-        MakeLabel(bg.transform, "Hold LEFT GRIP to keep panel open", 12,
-                  new Vector2(0, 140), new Vector2(700, 30));
+        MakeLabel(bg.transform, "Hold LEFT GRIP to keep open", 12, new Vector2(0, 140), new Vector2(700, 30));
 
         var upImg = MakeImage(bg.transform, "ScaleUp", new Vector2(220, 100), new Vector2(-130, 20), SCALE_UP_COL);
         AddOutline(upImg, PURPLE_BORDER, 3f);
@@ -444,7 +417,7 @@ public class SpawnMenu : MonoBehaviour
         scaleUICanvas.SetActive(false);
     }
 
-    //  PLACEMENT
+    // ── PLACEMENT ─────────────────────────────────────────────────
     void DrawPlacementRay(Vector3 from, Vector3 to)
     {
         if (placementRay == null) return;
@@ -502,7 +475,7 @@ public class SpawnMenu : MonoBehaviour
         isBusy      = false;
     }
 
-    //  SPAWN
+    // ── SPAWN ─────────────────────────────────────────────────────
     public void SpawnInstant(int index)
     {
         if (isHolding && heldObject != null) PlaceObject();
@@ -559,7 +532,7 @@ public class SpawnMenu : MonoBehaviour
         obj.layer  = LayerMask.NameToLayer("Ignore Raycast");
     }
 
-    //  MENU
+    // ── MENU ──────────────────────────────────────────────────────
     public void ToggleMenu() => SetMenuVisible(!menuVisible);
 
     void SetMenuVisible(bool v)
@@ -662,7 +635,7 @@ public class SpawnMenu : MonoBehaviour
 
     void SetCategory(string cat) { activeCategory = cat; RefreshGrid(); }
 
-    // ── UI helpers ────────────────────────────────────────────────
+    // ── UI HELPERS ────────────────────────────────────────────────
     Image MakeImage(Transform parent, string name, Vector2 size, Vector2 pos, Color color)
     {
         var go  = new GameObject(name);

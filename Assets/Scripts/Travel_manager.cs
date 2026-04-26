@@ -44,6 +44,7 @@ public class TravelManager : MonoBehaviour
         if (teleportIndicator != null)
             teleportIndicator.SetActive(false);
     }
+
     void Update()
     {
         if (lineRenderer == null || rightHandController == null) return;
@@ -53,7 +54,7 @@ public class TravelManager : MonoBehaviour
             lineRenderer.enabled = false;
             if (teleportIndicator != null)
                 teleportIndicator.SetActive(false);
-            // consume trigger state so no phantom "down" fires when busy clears
+            // consume trigger so no phantom fire when busy clears
             ReadTrigger(out _, out _);
             return;
         }
@@ -61,6 +62,7 @@ public class TravelManager : MonoBehaviour
         DrawArc();
         CheckTrigger();
     }
+
     bool ReadButton()
     {
         if (rightTriggerAction != null && rightTriggerAction.action != null)
@@ -73,10 +75,11 @@ public class TravelManager : MonoBehaviour
 
     void ReadTrigger(out bool pressed, out bool down)
     {
-        pressed = ReadButton();
-        down    = pressed && !triggerWasPressed;
+        pressed           = ReadButton();
+        down              = pressed && !triggerWasPressed;
         triggerWasPressed = pressed;
     }
+
     void DrawArc()
     {
         lineRenderer.positionCount = arcSegments;
@@ -120,9 +123,9 @@ public class TravelManager : MonoBehaviour
                 }
             }
         }
-
         lineRenderer.enabled = true;
     }
+
     void CheckTrigger()
     {
         ReadTrigger(out _, out bool triggerDown);
