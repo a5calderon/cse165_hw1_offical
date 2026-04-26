@@ -25,6 +25,12 @@ public class TravelManager : MonoBehaviour
     void Update()
     {
         if (lineRenderer == null || rightHandController == null) return;
+        if (SpawnMenu.isBusy)
+        {
+            lineRenderer.enabled = false;
+            return;
+        }
+
         DrawArc();
         CheckTrigger();
     }
@@ -72,7 +78,7 @@ public class TravelManager : MonoBehaviour
         bool triggerDown = (triggerPressed && !triggerWasPressed) || Input.GetKeyDown(KeyCode.F);
         triggerWasPressed = triggerPressed;
 
-        if (triggerDown && validTarget)
+        if (triggerDown && validTarget && !SpawnMenu.isBusy)
             Teleport();
     }
 
