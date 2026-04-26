@@ -23,10 +23,12 @@ public class SpawnMenu : MonoBehaviour
 
     private GameObject heldObject;
     private bool isHolding = false;
+    private bool previewMode = false;
     private bool leftGripWasPressed = false;
     private bool rightGripWasPressed = false;
 
-    private string activeCategory = "Furniture";
+   // private string activeCategory = "Furniture";
+    private string activeCategory = "";
     private GameObject gridPanel;
     private bool menuVisible = false;
     private bool menuBuilt = false;
@@ -60,32 +62,45 @@ public class SpawnMenu : MonoBehaviour
         UnityEngine.XR.InputDevice leftDevice  = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
         UnityEngine.XR.InputDevice rightDevice = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
 
-        leftDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.gripButton,  out bool leftGrip);
+        leftDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.triggerButton, out bool leftTrigger);
+        leftDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.gripButton, out bool leftGrip);
         rightDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.gripButton, out bool rightGrip);
 
-        bool leftGripDown  = (leftGrip  && !leftGripWasPressed)  || Input.GetKeyDown(KeyCode.G);
-        bool rightGripDown = (rightGrip && !rightGripWasPressed) || Input.GetKeyDown(KeyCode.T);
+        bool leftTriggerDown = (leftTrigger && !leftGripWasPressed) || Input.GetKeyDown(KeyCode.G);
+        bool rightGripDown   = (rightGrip && !rightGripWasPressed) || Input.GetKeyDown(KeyCode.T);
 
-        leftGripWasPressed  = leftGrip;
+        leftGripWasPressed  = leftTrigger;
         rightGripWasPressed = rightGrip;
 
         if (isHolding && heldObject != null)
         {
-            Camera cam = Camera.main;
-            if (cam != null)
+            if (!previewMode)
             {
-                Ray ray = new Ray(cam.transform.position, cam.transform.forward);
-                if (Physics.Raycast(ray, out RaycastHit hit, 15f, ~LayerMask.GetMask("Ignore Raycast")))
+                Camera cam = Camera.main;
+                if (cam != null)
                 {
-                    heldObject.transform.position = hit.point + Vector3.up * 0.1f;
-                    DrawPlacementRay(cam.transform.position, hit.point);
+                    Ray ray = new Ray(cam.transform.position, cam.transform.forward);
+                    if (Physics.Raycast(ray, out RaycastHit hit, 15f, ~LayerMask.GetMask("Ignore Raycast")))
+                    {
+                       // heldObject.transform.position = hit.point + Vector3.up * 0.1f;
+                        heldObject.transform.position = new Vector3(hit.point.x, 2f, hit.point.z);
+                        DrawPlacementRay(cam.transform.position, hit.point);
+                    }
+                    else
+                    {
+                        Vector3 floatPos = cam.transform.position + cam.transform.forward * 3f + Vector3.down * 1f;
+                        heldObject.transform.position = floatPos;
+                        DrawPlacementRay(cam.transform.position, floatPos);
+                    }
                 }
-                else
-                {
-                    Vector3 floatPos = cam.transform.position + cam.transform.forward * 3f + Vector3.down * 1f;
-                    heldObject.transform.position = floatPos;
-                    DrawPlacementRay(cam.transform.position, floatPos);
-                }
+
+                if (leftGrip)
+                    heldObject.transform.Rotate(Vector3.up, 90f * Time.deltaTime);
+
+                if (Input.GetKey(KeyCode.Q))
+                    heldObject.transform.Rotate(Vector3.up, -90f * Time.deltaTime);
+                if (Input.GetKey(KeyCode.E))
+                    heldObject.transform.Rotate(Vector3.up, 90f * Time.deltaTime);
             }
 
             if (rightGripDown)
@@ -96,7 +111,7 @@ public class SpawnMenu : MonoBehaviour
             if (placementRay != null)
                 placementRay.enabled = false;
 
-            if (leftGripDown)
+            if (leftTriggerDown)
                 ToggleMenu();
         }
     }
@@ -119,9 +134,21 @@ public class SpawnMenu : MonoBehaviour
 
     if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, 20f, floorMask))
     {
+        // get the bounds of the object to place it correctly on floor
+        Renderer[] renderers = heldObject.GetComponentsInChildren<Renderer>();
+        float lowestY = 0f;
+        if (renderers.Length > 0)
+        {
+            Bounds bounds = renderers[0].bounds;
+            foreach (var r in renderers)
+                bounds.Encapsulate(r.bounds);
+            lowestY = heldObject.transform.position.y - bounds.min.y;
+        }
+
         heldObject.transform.position = new Vector3(
             heldObject.transform.position.x,
-            hit.point.y + 1.5f,
+            //hit.point.y + lowestY,
+            hit.point.y + lowestY + 1.5f, 
             heldObject.transform.position.z
         );
     }
@@ -139,10 +166,8 @@ public class SpawnMenu : MonoBehaviour
     {
         rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
-        rb.linearDamping = 5f;
-        rb.angularDamping = 5f;
         rb.isKinematic = false;
-        rb.constraints = RigidbodyConstraints.FreezeRotationX | 
+        rb.constraints = RigidbodyConstraints.FreezeRotationX |
                          RigidbodyConstraints.FreezeRotationZ;
     }
 
@@ -151,33 +176,40 @@ public class SpawnMenu : MonoBehaviour
 
     heldObject = null;
     isHolding = false;
+    previewMode = false;
 }
     public void SpawnInstant(int index)
     {
         if (isHolding && heldObject != null)
             PlaceObject();
+
+        previewMode = false;
+
         if (prefabs == null || index >= prefabs.Length || prefabs[index] == null) return;
+
         if (menuPanel != null)
             menuPanel.SetActive(false);
 
         GameObject obj = Instantiate(prefabs[index]);
 
         Camera cam = Camera.main;
-        obj.transform.position = cam != null
-            ? cam.transform.position + cam.transform.forward * 1.5f
+        
+        /*obj.transform.position = cam != null
+            ? cam.transform.position + cam.transform.forward * 2.5f + Vector3.up * 0.5f 
             : rightHandController.position;
+        */
+        obj.transform.position = cam != null
+            ? new Vector3(cam.transform.position.x + cam.transform.forward.x * 2.5f, 2f, cam.transform.position.z + cam.transform.forward.z * 2.5f)
+            : rightHandController.position;
+        obj.transform.rotation = Quaternion.Euler(0, cam != null ? cam.transform.eulerAngles.y + 180f : 180f, 0);
 
-        Rigidbody rb = heldObject.GetComponent<Rigidbody>();
+        Rigidbody rb = obj.GetComponent<Rigidbody>();
         if (rb != null)
-        {
-            rb.linearVelocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
-            rb.isKinematic = false;
-        }
+            rb.isKinematic = true;
 
         heldObject = obj;
-        isHolding  = true;
-        obj.layer  = LayerMask.NameToLayer("Ignore Raycast");
+        isHolding = true;
+        obj.layer = LayerMask.NameToLayer("Ignore Raycast");
     }
 
     public void SpawnItem(SpawnableItem item)
@@ -185,17 +217,28 @@ public class SpawnMenu : MonoBehaviour
         if (isHolding && heldObject != null)
             PlaceObject();
 
+        previewMode = false;
+
         if (item?.prefab == null) return;
         SetMenuVisible(false);
 
         GameObject obj = Instantiate(item.prefab);
 
         Camera cam = Camera.main;
-        obj.transform.position = cam != null
-            ? cam.transform.position + cam.transform.forward * 2.5f + Vector3.up * 0.5f
+        
+        /*obj.transform.position = cam != null
+            ? cam.transform.position + cam.transform.forward * 2.5f + Vector3.up * 0.5f 
             : rightHandController != null
-                ? rightHandController.position + Vector3.up * 0.5f
+                ? rightHandController.position + Vector3.up * 0.5f 
                 : Vector3.zero;
+        */
+        obj.transform.position = cam != null
+            ? new Vector3(cam.transform.position.x + cam.transform.forward.x * 2.5f, 2f, cam.transform.position.z + cam.transform.forward.z * 2.5f)
+            : rightHandController != null
+                ? new Vector3(rightHandController.position.x, 2f, rightHandController.position.z)
+                : Vector3.zero;
+        obj.transform.rotation = Quaternion.Euler(0, cam != null ? cam.transform.eulerAngles.y + 180f : 180f, 0);
+
         if (!obj.TryGetComponent<Rigidbody>(out var rb))
             rb = obj.AddComponent<Rigidbody>();
         rb.isKinematic = true;
@@ -204,8 +247,8 @@ public class SpawnMenu : MonoBehaviour
             obj.AddComponent<BoxCollider>();
 
         heldObject = obj;
-        isHolding  = true;
-        obj.layer  = LayerMask.NameToLayer("Ignore Raycast");
+        isHolding = true;
+        obj.layer = LayerMask.NameToLayer("Ignore Raycast");
     }
 
     public void ToggleMenu() => SetMenuVisible(!menuVisible);
@@ -236,33 +279,30 @@ public class SpawnMenu : MonoBehaviour
             menuPanel.layer = LayerMask.NameToLayer("UI");
 
             var canvas = menuPanel.AddComponent<Canvas>();
-            canvas.renderMode   = RenderMode.WorldSpace;
+            canvas.renderMode = RenderMode.WorldSpace;
             canvas.sortingOrder = 10;
             menuPanel.AddComponent<GraphicRaycaster>();
 
             var rt = menuPanel.GetComponent<RectTransform>();
-            rt.sizeDelta        = new Vector2(700, 500);
+            rt.sizeDelta = new Vector2(700, 500);
             rt.anchoredPosition = Vector2.zero;
 
             menuPanel.transform.localScale = Vector3.one * 0.001f;
         }
 
-        var bg = MakeImage(menuPanel.transform, "BG",
-                           new Vector2(700, 500), Vector2.zero, BG_DARK);
+        var bg = MakeImage(menuPanel.transform, "BG", new Vector2(700, 500), Vector2.zero, BG_DARK);
         AddOutline(bg, PURPLE_BORDER, 4f);
 
         MakeCategoryTab(bg.transform, "FURNITURE", new Vector2(185, 120), "Furniture");
-        MakeCategoryTab(bg.transform, "ITEMS",     new Vector2(185,  60), "Items");
+        MakeCategoryTab(bg.transform, "ITEMS", new Vector2(185, 60), "Items");
 
-        var closeImg = MakeImage(bg.transform, "CloseBtn",
-                                 new Vector2(200, 40), new Vector2(185, -195), CLOSE_COLOR);
+        var closeImg = MakeImage(bg.transform, "CloseBtn", new Vector2(200, 40), new Vector2(185, -195), CLOSE_COLOR);
         AddOutline(closeImg, PURPLE_BORDER, 2f);
         MakeLabel(closeImg.transform, "CLOSE", 16, Vector2.zero, new Vector2(200, 40));
         var closeBtn = closeImg.gameObject.AddComponent<Button>();
         closeBtn.onClick.AddListener(() => SetMenuVisible(false));
 
-        var gridImg = MakeImage(bg.transform, "GridPanel",
-                                new Vector2(310, 320), new Vector2(-160, 20),
+        var gridImg = MakeImage(bg.transform, "GridPanel", new Vector2(310, 320), new Vector2(-160, 20),
                                 new Color(0.10f, 0.12f, 0.18f, 1f));
         AddOutline(gridImg, PURPLE_BORDER, 3f);
         gridPanel = gridImg.gameObject;
@@ -270,11 +310,11 @@ public class SpawnMenu : MonoBehaviour
         var gridRt = gridPanel.GetComponent<RectTransform>();
         gridRt.sizeDelta = new Vector2(310, 320);
 
-        var grid             = gridPanel.AddComponent<GridLayoutGroup>();
-        grid.cellSize        = new Vector2(64, 64);
-        grid.spacing         = new Vector2(8, 8);
-        grid.padding         = new RectOffset(12, 12, 12, 12);
-        grid.constraint      = GridLayoutGroup.Constraint.FixedColumnCount;
+        var grid = gridPanel.AddComponent<GridLayoutGroup>();
+        grid.cellSize = new Vector2(64, 64);
+        grid.spacing = new Vector2(8, 8);
+        grid.padding = new RectOffset(12, 12, 12, 12);
+        grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
         grid.constraintCount = 4;
 
         RefreshGrid();
@@ -291,8 +331,7 @@ public class SpawnMenu : MonoBehaviour
 
         foreach (var item in filtered)
         {
-            var cell = MakeImage(gridPanel.transform, item.itemName,
-                                 new Vector2(64, 64), Vector2.zero, BTN_NORMAL);
+            var cell = MakeImage(gridPanel.transform, item.itemName, new Vector2(64, 64), Vector2.zero, BTN_NORMAL);
             AddOutline(cell, PURPLE_BORDER, 2f);
 
             if (item.icon != null)
@@ -301,7 +340,7 @@ public class SpawnMenu : MonoBehaviour
                 icon.transform.SetParent(cell.transform, false);
                 icon.sprite = item.icon;
                 var irt = icon.GetComponent<RectTransform>();
-                irt.sizeDelta        = new Vector2(52, 52);
+                irt.sizeDelta = new Vector2(52, 52);
                 irt.anchoredPosition = Vector2.zero;
             }
             else
@@ -309,7 +348,7 @@ public class SpawnMenu : MonoBehaviour
                 MakeLabel(cell.transform, item.itemName, 10, Vector2.zero, new Vector2(60, 60));
             }
 
-            var btn      = cell.gameObject.AddComponent<Button>();
+            var btn = cell.gameObject.AddComponent<Button>();
             var captured = item;
             btn.onClick.AddListener(() => SpawnItem(captured));
         }
@@ -323,12 +362,12 @@ public class SpawnMenu : MonoBehaviour
 
     Image MakeImage(Transform parent, string name, Vector2 size, Vector2 pos, Color color)
     {
-        var go  = new GameObject(name);
+        var go = new GameObject(name);
         go.transform.SetParent(parent, false);
         var img = go.AddComponent<Image>();
         img.color = color;
-        var rt   = go.GetComponent<RectTransform>();
-        rt.sizeDelta        = size;
+        var rt = go.GetComponent<RectTransform>();
+        rt.sizeDelta = size;
         rt.anchoredPosition = pos;
         return img;
     }
@@ -336,7 +375,7 @@ public class SpawnMenu : MonoBehaviour
     void AddOutline(Component target, Color color, float width)
     {
         var o = target.gameObject.AddComponent<Outline>();
-        o.effectColor    = color;
+        o.effectColor = color;
         o.effectDistance = new Vector2(width, -width);
     }
 
@@ -347,20 +386,27 @@ public class SpawnMenu : MonoBehaviour
         AddOutline(img, PURPLE_BORDER, 2f);
         MakeLabel(img.transform, label, 15, Vector2.zero, new Vector2(220, 45));
         var btn = img.gameObject.AddComponent<Button>();
+        ColorBlock colors = btn.colors;
+        colors.normalColor = category == activeCategory ? TEAL_ACTIVE : BTN_NORMAL;
+        colors.highlightedColor = TEAL_ACTIVE;
+        colors.pressedColor = PURPLE_BORDER;
+        colors.selectedColor = TEAL_ACTIVE;
+        btn.colors = colors;
+        btn.targetGraphic = img;
         btn.onClick.AddListener(() => SetCategory(category));
     }
 
     TextMeshProUGUI MakeLabel(Transform parent, string text, int fontSize, Vector2 pos, Vector2 size)
     {
-        var go  = new GameObject("Lbl_" + text);
+        var go = new GameObject("Lbl_" + text);
         go.transform.SetParent(parent, false);
         var tmp = go.AddComponent<TextMeshProUGUI>();
-        tmp.text      = text;
-        tmp.fontSize  = fontSize;
-        tmp.color     = Color.white;
+        tmp.text = text;
+        tmp.fontSize = fontSize;
+        tmp.color = Color.white;
         tmp.alignment = TextAlignmentOptions.Center;
         var rt = go.GetComponent<RectTransform>();
-        rt.sizeDelta        = size;
+        rt.sizeDelta = size;
         rt.anchoredPosition = pos;
         return tmp;
     }
