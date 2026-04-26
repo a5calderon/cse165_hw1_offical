@@ -59,7 +59,7 @@ public class SpawnMenu : MonoBehaviour
     private bool       menuVisible    = false;
     private bool       menuBuilt      = false;
 
-    // ── colours ───────────────────────────────────────────────────
+    // ── colors ───────────────────────────────────────────────────
     static readonly Color BG_DARK       = new Color(0.08f, 0.10f, 0.14f, 0.95f);
     static readonly Color PURPLE_BORDER = new Color(0.72f, 0.20f, 1.00f, 1f);
     static readonly Color TEAL_ACTIVE   = new Color(0.15f, 0.50f, 0.50f, 1f);
@@ -69,21 +69,34 @@ public class SpawnMenu : MonoBehaviour
     static readonly Color SCALE_UP_COL  = new Color(0.10f, 0.70f, 0.35f, 0.95f);
     static readonly Color SCALE_DN_COL  = new Color(0.80f, 0.20f, 0.20f, 0.95f);
 
-    // ═════════════════════════════════════════════════════════════
     void OnEnable()
     {
-        leftTriggerAction?.action.Enable();
-        leftGripAction?.action.Enable();
-        rightTriggerAction?.action.Enable();
-        rightGripAction?.action.Enable();
+        try
+        {
+            leftTriggerAction?.action.Enable();
+            leftGripAction?.action.Enable();
+            rightTriggerAction?.action.Enable();
+            rightGripAction?.action.Enable();
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning("[SpawnMenu] OnEnable input action error: " + e.Message);
+        }
     }
 
     void OnDisable()
     {
-        leftTriggerAction?.action.Disable();
-        leftGripAction?.action.Disable();
-        rightTriggerAction?.action.Disable();
-        rightGripAction?.action.Disable();
+        try
+        {
+            leftTriggerAction?.action.Disable();
+            leftGripAction?.action.Disable();
+            rightTriggerAction?.action.Disable();
+            rightGripAction?.action.Disable();
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning("[SpawnMenu] OnDisable input action error: " + e.Message);
+        }
     }
 
     void Start()
@@ -107,15 +120,17 @@ public class SpawnMenu : MonoBehaviour
         menuBuilt = true;
     }
 
-    // ── Reads an InputAction (float axis > 0.5) OR keyboard key ──
+    // ── Reads an InputAction OR keyboard key ─────────────────────
     bool ReadButton(InputActionReference actionRef, KeyCode fallback)
     {
         if (actionRef != null && actionRef.action != null)
-            return actionRef.action.ReadValue<float>() > 0.5f;
+        {
+            try   { return actionRef.action.ReadValue<float>() > 0.5f; }
+            catch { return actionRef.action.IsPressed(); }
+        }
         return Input.GetKey(fallback);
     }
 
-    // ═════════════════════════════════════════════════════════════
     void Update()
     {
         if (!menuBuilt) return;
@@ -140,9 +155,7 @@ public class SpawnMenu : MonoBehaviour
 
         isBusy = isHolding || selectedObject != null || menuVisible;
 
-        // ═══════════════════════════════════════════════════════════
         // HOLDING STATE
-        // ═══════════════════════════════════════════════════════════
         if (isHolding && heldObject != null)
         {
             Camera cam = Camera.main;
@@ -174,9 +187,7 @@ public class SpawnMenu : MonoBehaviour
             return;
         }
 
-        // ═══════════════════════════════════════════════════════════
         // SELECTED STATE
-        // ═══════════════════════════════════════════════════════════
         if (selectedObject != null)
         {
             if (leftGripHeld)
@@ -203,9 +214,7 @@ public class SpawnMenu : MonoBehaviour
             return;
         }
 
-        // ═══════════════════════════════════════════════════════════
         // IDLE STATE
-        // ═══════════════════════════════════════════════════════════
         HideScaleUI();
 
         if (placementRay != null)
@@ -224,9 +233,7 @@ public class SpawnMenu : MonoBehaviour
             UpdateGazeSelect();
     }
 
-    // ═════════════════════════════════════════════════════════════
     //  PICK UP SELECTED OBJECT
-    // ═════════════════════════════════════════════════════════════
     void PickUpSelectedObject()
     {
         if (selectedObject == null) return;
@@ -244,9 +251,7 @@ public class SpawnMenu : MonoBehaviour
         isBusy     = true;
     }
 
-    // ═════════════════════════════════════════════════════════════
-    //  SELECTION METHOD 1 – GAZE (look for 2s)
-    // ═════════════════════════════════════════════════════════════
+    //  SELECTION METHOD 1 – GAZE 
     void UpdateGazeSelect()
     {
         Camera cam = Camera.main;
@@ -281,9 +286,7 @@ public class SpawnMenu : MonoBehaviour
         gazeTimer = 0f;
     }
 
-    // ═════════════════════════════════════════════════════════════
     //  SELECTION METHOD 2 – RIGHT TRIGGER RAYCAST
-    // ═════════════════════════════════════════════════════════════
     void TryRaycastSelect()
     {
         Ray ray = (rightHandController != null)
@@ -316,9 +319,7 @@ public class SpawnMenu : MonoBehaviour
         Deselect();
     }
 
-    // ═════════════════════════════════════════════════════════════
     //  HIGHLIGHT
-    // ═════════════════════════════════════════════════════════════
     void SelectObject(GameObject obj)
     {
         if (selectedObject == obj) return;
@@ -443,9 +444,7 @@ public class SpawnMenu : MonoBehaviour
         scaleUICanvas.SetActive(false);
     }
 
-    // ═════════════════════════════════════════════════════════════
     //  PLACEMENT
-    // ═════════════════════════════════════════════════════════════
     void DrawPlacementRay(Vector3 from, Vector3 to)
     {
         if (placementRay == null) return;
@@ -503,9 +502,7 @@ public class SpawnMenu : MonoBehaviour
         isBusy      = false;
     }
 
-    // ═════════════════════════════════════════════════════════════
     //  SPAWN
-    // ═════════════════════════════════════════════════════════════
     public void SpawnInstant(int index)
     {
         if (isHolding && heldObject != null) PlaceObject();
@@ -562,9 +559,7 @@ public class SpawnMenu : MonoBehaviour
         obj.layer  = LayerMask.NameToLayer("Ignore Raycast");
     }
 
-    // ═════════════════════════════════════════════════════════════
     //  MENU
-    // ═════════════════════════════════════════════════════════════
     public void ToggleMenu() => SetMenuVisible(!menuVisible);
 
     void SetMenuVisible(bool v)

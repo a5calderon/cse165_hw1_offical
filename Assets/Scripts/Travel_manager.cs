@@ -21,8 +21,17 @@ public class TravelManager : MonoBehaviour
     private Vector3 teleportTarget;
     private bool    triggerWasPressed = false;
 
-    void OnEnable()  => rightTriggerAction?.action.Enable();
-    void OnDisable() => rightTriggerAction?.action.Disable();
+    void OnEnable()
+    {
+        try { rightTriggerAction?.action.Enable(); }
+        catch (System.Exception e) { Debug.LogWarning("[TravelManager] OnEnable error: " + e.Message); }
+    }
+
+    void OnDisable()
+    {
+        try { rightTriggerAction?.action.Disable(); }
+        catch (System.Exception e) { Debug.LogWarning("[TravelManager] OnDisable error: " + e.Message); }
+    }
 
     void Awake()
     {
@@ -55,7 +64,10 @@ public class TravelManager : MonoBehaviour
     bool ReadButton()
     {
         if (rightTriggerAction != null && rightTriggerAction.action != null)
-            return rightTriggerAction.action.ReadValue<float>() > 0.5f;
+        {
+            try   { return rightTriggerAction.action.ReadValue<float>() > 0.5f; }
+            catch { return rightTriggerAction.action.IsPressed(); }
+        }
         return Input.GetKey(KeyCode.F);
     }
 
@@ -111,7 +123,6 @@ public class TravelManager : MonoBehaviour
 
         lineRenderer.enabled = true;
     }
-
     void CheckTrigger()
     {
         ReadTrigger(out _, out bool triggerDown);
