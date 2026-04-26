@@ -6,10 +6,11 @@ public class TravelManager : MonoBehaviour
     [Header("References")]
     public Transform rightHandController;
     public Transform xrOrigin;
+    public GameObject teleportIndicator; // flat circle prefab
 
     [Header("Arc Settings")]
-    public float arcVelocity = 10f;
-    public int arcSegments = 30;
+    public float arcVelocity = 8f;
+    public int arcSegments = 20;
     public LineRenderer lineRenderer;
 
     private bool validTarget = false;
@@ -19,7 +20,13 @@ public class TravelManager : MonoBehaviour
     void Awake()
     {
         if (lineRenderer != null)
+        {
             lineRenderer.positionCount = arcSegments;
+            lineRenderer.startWidth = 0.02f;
+            lineRenderer.endWidth = 0.01f;
+        }
+        if (teleportIndicator != null)
+            teleportIndicator.SetActive(false);
     }
 
     void Update()
@@ -28,9 +35,10 @@ public class TravelManager : MonoBehaviour
         if (SpawnMenu.isBusy)
         {
             lineRenderer.enabled = false;
+            if (teleportIndicator != null)
+                teleportIndicator.SetActive(false);
             return;
         }
-
         DrawArc();
         CheckTrigger();
     }
@@ -39,10 +47,13 @@ public class TravelManager : MonoBehaviour
     {
         lineRenderer.positionCount = arcSegments;
         Vector3 startPos = rightHandController.position;
-        Vector3 aimDir = Quaternion.AngleAxis(-30f, rightHandController.right) * rightHandController.forward;
+        Vector3 aimDir = Quaternion.AngleAxis(-45f, rightHandController.right) * rightHandController.forward;
         Vector3 startVel = aimDir * arcVelocity;
 
         validTarget = false;
+
+        if (teleportIndicator != null)
+            teleportIndicator.SetActive(false);
 
         for (int i = 0; i < arcSegments; i++)
         {
@@ -59,8 +70,19 @@ public class TravelManager : MonoBehaviour
                 if (Physics.Raycast(prevPoint, dir, out RaycastHit hit, dir.magnitude))
                 {
                     teleportTarget = hit.point;
+
+                    // show indicator at landing spot
+                    if (teleportIndicator != null)
+                    {
+                        teleportIndicator.SetActive(true);
+                        teleportIndicator.transform.position = hit.point + Vector3.up * 0.02f;
+                        teleportIndicator.transform.rotation = Quaternion.LookRotation(rightHandController.forward, Vector3.up);
+                        teleportIndicator.transform.rotation = Quaternion.Euler(0, teleportIndicator.transform.eulerAngles.y, 0);
+                    }
+
                     for (int j = i; j < arcSegments; j++)
                         lineRenderer.SetPosition(j, hit.point);
+
                     validTarget = true;
                     break;
                 }
@@ -89,5 +111,13 @@ public class TravelManager : MonoBehaviour
             xrOrigin.position.y,
             teleportTarget.z
         );
+
+        Vector3 controllerForward = rightHandController.forward;
+        controllerForward.y = 0;
+        if (controllerForward != Vector3.zero)
+            xrOrigin.rotation = Quaternion.LookRotation(controllerForward);
+
+        if (teleportIndicator != null)
+            teleportIndicator.SetActive(false);
     }
 }
