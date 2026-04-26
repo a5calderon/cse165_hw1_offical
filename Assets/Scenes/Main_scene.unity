@@ -293,6 +293,7 @@ MonoBehaviour:
   - {fileID: 6664341627372563897, guid: e59739af3e089432b839deac21dfab82, type: 3}
   menuPanel: {fileID: 162591326}
   rightHandController: {fileID: 1050043195}
+  leftHandController: {fileID: 1204222692}
   spawnableItems:
   - itemName: Bed
     prefab: {fileID: 6664341627372563897, guid: e59739af3e089432b839deac21dfab82, type: 3}
@@ -302,8 +303,11 @@ MonoBehaviour:
     prefab: {fileID: 7489060198037821859, guid: b46b869aa1f304894ac826dd77a4c9e5, type: 3}
     icon: {fileID: 0}
     category: Furniture
-  leftHandController: {fileID: 1204222692}
   placementRay: {fileID: 0}
+  leftTriggerAction: {fileID: -5982496924579745919, guid: c348712bda248c246b8c49b3db54643f, type: 3}
+  leftGripAction: {fileID: 6558622148059887818, guid: c348712bda248c246b8c49b3db54643f, type: 3}
+  rightTriggerAction: {fileID: 83097790271614945, guid: c348712bda248c246b8c49b3db54643f, type: 3}
+  rightGripAction: {fileID: 187161793506945269, guid: c348712bda248c246b8c49b3db54643f, type: 3}
 --- !u!1 &162591326
 GameObject:
   m_ObjectHideFlags: 0
@@ -1292,6 +1296,7 @@ MonoBehaviour:
   arcVelocity: 12
   arcSegments: 30
   lineRenderer: {fileID: 1769830872}
+  rightTriggerAction: {fileID: 0}
 --- !u!4 &1807339757 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1717954561962503726, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}

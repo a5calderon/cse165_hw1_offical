@@ -1,24 +1,28 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.XR;
+using UnityEngine.InputSystem;
 
 public class TravelManager : MonoBehaviour
 {
     [Header("References")]
     public Transform rightHandController;
     public Transform xrOrigin;
-    public GameObject teleportIndicator;   // flat circle prefab
+    public GameObject teleportIndicator;
 
     [Header("Arc Settings")]
-    public float arcVelocity  = 8f;
-    public int   arcSegments  = 20;
+    public float arcVelocity = 8f;
+    public int   arcSegments = 20;
     public LineRenderer lineRenderer;
 
-    private bool      validTarget        = false;
-    private Vector3   teleportTarget;
-    private bool      triggerWasPressed  = false;
+    [Header("XR Input Action")]
+    public InputActionReference rightTriggerAction;
 
-    private readonly List<InputDevice> _rightDevices = new List<InputDevice>();
+    private bool    validTarget       = false;
+    private Vector3 teleportTarget;
+    private bool    triggerWasPressed = false;
+
+    void OnEnable()  => rightTriggerAction?.action.Enable();
+    void OnDisable() => rightTriggerAction?.action.Disable();
 
     void Awake()
     {
@@ -28,7 +32,6 @@ public class TravelManager : MonoBehaviour
             lineRenderer.startWidth    = 0.02f;
             lineRenderer.endWidth      = 0.01f;
         }
-
         if (teleportIndicator != null)
             teleportIndicator.SetActive(false);
     }
@@ -36,32 +39,30 @@ public class TravelManager : MonoBehaviour
     {
         if (lineRenderer == null || rightHandController == null) return;
 
-        // While SpawnMenu is busy (holding, selected, menu open) hide arc
         if (SpawnMenu.isBusy)
         {
             lineRenderer.enabled = false;
             if (teleportIndicator != null)
                 teleportIndicator.SetActive(false);
-            // Still need to track trigger so we don't get a phantom "down"
-            // when busy ends — read and discard.
-            ReadTrigger(out bool _, out bool _);
+            // consume trigger state so no phantom "down" fires when busy clears
+            ReadTrigger(out _, out _);
             return;
         }
 
         DrawArc();
         CheckTrigger();
     }
+    bool ReadButton()
+    {
+        if (rightTriggerAction != null && rightTriggerAction.action != null)
+            return rightTriggerAction.action.ReadValue<float>() > 0.5f;
+        return Input.GetKey(KeyCode.F);
+    }
+
     void ReadTrigger(out bool pressed, out bool down)
     {
-        pressed = false;
-
-        InputDevices.GetDevicesAtXRNode(XRNode.RightHand, _rightDevices);
-        if (_rightDevices.Count > 0)
-            _rightDevices[0].TryGetFeatureValue(UnityEngine.XR.CommonUsages.triggerButton, out pressed);
-
-        // Keyboard fallback for Mac testing
-        bool keyDown = Input.GetKeyDown(KeyCode.F);
-        down = (pressed && !triggerWasPressed) || keyDown;
+        pressed = ReadButton();
+        down    = pressed && !triggerWasPressed;
         triggerWasPressed = pressed;
     }
     void DrawArc()
@@ -96,11 +97,9 @@ public class TravelManager : MonoBehaviour
                     {
                         teleportIndicator.SetActive(true);
                         teleportIndicator.transform.position = hit.point + Vector3.up * 0.02f;
-                        teleportIndicator.transform.rotation = Quaternion.Euler(
-                            0, rightHandController.eulerAngles.y, 0);
+                        teleportIndicator.transform.rotation = Quaternion.Euler(0, rightHandController.eulerAngles.y, 0);
                     }
 
-                    // Fill remaining arc segments at the hit point
                     for (int j = i; j < arcSegments; j++)
                         lineRenderer.SetPosition(j, hit.point);
 
@@ -112,10 +111,10 @@ public class TravelManager : MonoBehaviour
 
         lineRenderer.enabled = true;
     }
+
     void CheckTrigger()
     {
-        ReadTrigger(out bool _, out bool triggerDown);
-
+        ReadTrigger(out _, out bool triggerDown);
         if (triggerDown && validTarget)
             Teleport();
     }
@@ -123,16 +122,12 @@ public class TravelManager : MonoBehaviour
     void Teleport()
     {
         if (xrOrigin == null) return;
+        xrOrigin.position = new Vector3(teleportTarget.x, xrOrigin.position.y, teleportTarget.z);
 
-        xrOrigin.position = new Vector3(
-            teleportTarget.x,
-            xrOrigin.position.y,
-            teleportTarget.z);
-
-        Vector3 controllerForward = rightHandController.forward;
-        controllerForward.y = 0f;
-        if (controllerForward != Vector3.zero)
-            xrOrigin.rotation = Quaternion.LookRotation(controllerForward);
+        Vector3 forward = rightHandController.forward;
+        forward.y = 0f;
+        if (forward != Vector3.zero)
+            xrOrigin.rotation = Quaternion.LookRotation(forward);
 
         if (teleportIndicator != null)
             teleportIndicator.SetActive(false);
