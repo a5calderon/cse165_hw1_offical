@@ -551,7 +551,9 @@ public class SpawnMenu : MonoBehaviour
             }
             menuPanel.SetActive(v);
         }
-        isBusy = v || isHolding || selectedObject != null;
+        //isBusy = v || isHolding || selectedObject != null;
+        isBusy = isHolding || selectedObject != null;
+
     }
 
     void BuildMenu()
