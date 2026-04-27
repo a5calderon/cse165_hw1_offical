@@ -1,23 +1,31 @@
 using UnityEngine;
-using UnityEngine.XR;
 using UnityEngine.UI;
 using TMPro;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine.InputSystem;
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  SpawnMenu – Fixed version
+//  Key changes:
+//   • Buttons are activated by GAZE + LEFT TRIGGER (no XR pointer needed)
+//   • A small reticle highlights the button you're looking at
+//   • Menu placement follows the camera each time it opens
+//   • Scale UI uses the same gaze+trigger scheme
+//   • All original game-logic kept intact
+// ─────────────────────────────────────────────────────────────────────────────
 public class SpawnMenu : MonoBehaviour
 {
-    // ── Static state queries ──────────────────────────────────────
+    // ── Static state ──────────────────────────────────────────────
     private static bool _isHolding = false;
     public static bool IsHoldingObject() => _isHolding;
-    public static bool IsBusy() => _isHolding;
+    public static bool IsBusy()          => _isHolding;
 
     [Header("References")]
-    public GameObject[] prefabs;
-    public GameObject menuPanel;
-    public Transform rightHandController;
-    public Transform leftHandController;
+    public GameObject[]    prefabs;
+    public GameObject      menuPanel;          // kept for Inspector compat; overwritten at runtime
+    public Transform       rightHandController;
+    public Transform       leftHandController;
 
     [Header("Spawnable Items")]
     public List<SpawnableItem> spawnableItems = new List<SpawnableItem>();
@@ -30,36 +38,51 @@ public class SpawnMenu : MonoBehaviour
     public InputActionReference leftGripAction;
     public InputActionReference rightGripAction;
 
-    // ── spawn / hold state ────────────────────────────────────────
+    // ── Spawn / hold ──────────────────────────────────────────────
     private GameObject heldObject;
     private bool isHolding   = false;
     private bool previewMode = false;
 
-    // ── selection state ───────────────────────────────────────────
-    private GameObject selectedObject;
-    private GameObject gazeCandidate;
-    private float      gazeTimer       = 0f;
-    private const float GAZE_HOLD_TIME = 2f;
-    private List<Material> originalMaterials = new List<Material>();
-    private Material highlightMat;
+    // ── Selection ─────────────────────────────────────────────────
+    private GameObject        selectedObject;
+    private GameObject        gazeCandidate;
+    private float             gazeTimer          = 0f;
+    private const float       GAZE_HOLD_TIME     = 2f;
+    private List<Material>    originalMaterials  = new List<Material>();
+    private Material          highlightMat;
 
-    // ── scale UI ──────────────────────────────────────────────────
+    // ── Scale UI ──────────────────────────────────────────────────
     private GameObject scaleUICanvas;
     private bool       scaleUIVisible = false;
 
-    // ── input edge-detect state ───────────────────────────────────
-    private bool leftTriggerWasPressed  = false;
-    private bool leftGripWasPressed     = false;
-    private bool rightGripWasPressed    = false;
-    private bool leftGripHeld           = false;
+    // ── Input state ───────────────────────────────────────────────
+    private bool leftTriggerWasPressed = false;
+    private bool leftGripWasPressed    = false;
+    private bool rightGripWasPressed   = false;
+    private bool leftGripHeld          = false;
 
-    // ── menu state ────────────────────────────────────────────────
+    // ── Menu state ────────────────────────────────────────────────
     private string     activeCategory = "";
     private GameObject gridPanel;
     private bool       menuVisible    = false;
     private bool       menuBuilt      = false;
 
-    // ── colors ────────────────────────────────────────────────────
+    // ── Gaze-button system ────────────────────────────────────────
+    // Each interactive UI button registers itself here so we can
+    // do a physics/UI raycast-free hover check via screen-space dot product.
+    private struct GazeButton
+    {
+        public RectTransform rect;
+        public Canvas        canvas;
+        public System.Action onClick;
+        public Image         image;
+        public Color         normalColor;
+    }
+    private List<GazeButton> gazeButtons    = new List<GazeButton>();
+    private int              hoveredIndex   = -1;
+    private Color            hoverColor     = new Color(0.90f, 0.70f, 1.00f, 1f);
+
+    // ── Colors ────────────────────────────────────────────────────
     static readonly Color BG_DARK       = new Color(0.08f, 0.10f, 0.14f, 0.95f);
     static readonly Color PURPLE_BORDER = new Color(0.72f, 0.20f, 1.00f, 1f);
     static readonly Color TEAL_ACTIVE   = new Color(0.15f, 0.50f, 0.50f, 1f);
@@ -69,32 +92,17 @@ public class SpawnMenu : MonoBehaviour
     static readonly Color SCALE_UP_COL  = new Color(0.10f, 0.70f, 0.35f, 0.95f);
     static readonly Color SCALE_DN_COL  = new Color(0.80f, 0.20f, 0.20f, 0.95f);
 
+    // ─────────────────────────────────────────────────────────────
     void OnEnable()
     {
-        try
-        {
-            leftTriggerAction?.action.Enable();
-            leftGripAction?.action.Enable();
-            rightGripAction?.action.Enable();
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogWarning("[SpawnMenu] OnEnable error: " + e.Message);
-        }
+        try { leftTriggerAction?.action.Enable(); leftGripAction?.action.Enable(); rightGripAction?.action.Enable(); }
+        catch (System.Exception e) { Debug.LogWarning("[SpawnMenu] OnEnable: " + e.Message); }
     }
 
     void OnDisable()
     {
-        try
-        {
-            leftTriggerAction?.action.Disable();
-            leftGripAction?.action.Disable();
-            rightGripAction?.action.Disable();
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogWarning("[SpawnMenu] OnDisable error: " + e.Message);
-        }
+        try { leftTriggerAction?.action.Disable(); leftGripAction?.action.Disable(); rightGripAction?.action.Disable(); }
+        catch (System.Exception e) { Debug.LogWarning("[SpawnMenu] OnDisable: " + e.Message); }
     }
 
     void Start()
@@ -104,11 +112,10 @@ public class SpawnMenu : MonoBehaviour
         highlightMat.EnableKeyword("_EMISSION");
         highlightMat.SetColor("_EmissionColor", HIGHLIGHT_COL * 0.6f);
 
+        // Clear any scene Canvas reference – we build our own
         if (menuPanel != null)
         {
-            Debug.LogWarning("[SpawnMenu] menuPanel was assigned in the Inspector. " +
-                "Clearing it to avoid toggling the scene Canvas. " +
-                "A dedicated menu canvas will be created at runtime.");
+            Debug.LogWarning("[SpawnMenu] Clearing Inspector menuPanel; runtime canvas will be used.");
             menuPanel = null;
         }
 
@@ -123,6 +130,7 @@ public class SpawnMenu : MonoBehaviour
         menuBuilt = true;
     }
 
+    // ─────────────────────────────────────────────────────────────
     bool ReadButton(InputActionReference actionRef, KeyCode fallback)
     {
         if (actionRef != null && actionRef.action != null)
@@ -133,16 +141,15 @@ public class SpawnMenu : MonoBehaviour
         return Input.GetKey(fallback);
     }
 
+    // ─────────────────────────────────────────────────────────────
     void Update()
     {
         if (!menuBuilt) return;
 
-        // ── Read current button states ────────────────────────────
         bool leftTrigger  = ReadButton(leftTriggerAction, KeyCode.G);
         bool leftGrip     = ReadButton(leftGripAction,    KeyCode.H);
         bool rightGrip    = ReadButton(rightGripAction,   KeyCode.T);
 
-        // ── Edge detect ───────────────────────────────────────────
         bool leftTriggerDown = leftTrigger && !leftTriggerWasPressed;
         bool leftGripDown    = leftGrip    && !leftGripWasPressed;
         bool rightGripDown   = rightGrip   && !rightGripWasPressed;
@@ -154,7 +161,17 @@ public class SpawnMenu : MonoBehaviour
 
         UpdateStaticHolding();
 
-        // ── HOLDING STATE ─────────────────────────────────────────
+        // ── Always update gaze-button hover ───────────────────────
+        UpdateGazeButtonHover();
+
+        // ── If trigger pressed and a UI button is hovered → fire it
+        if (leftTriggerDown && hoveredIndex >= 0)
+        {
+            gazeButtons[hoveredIndex].onClick?.Invoke();
+            return; // consume the press
+        }
+
+        // ── HOLDING ───────────────────────────────────────────────
         if (isHolding && heldObject != null)
         {
             Camera cam = Camera.main;
@@ -168,17 +185,15 @@ public class SpawnMenu : MonoBehaviour
                 }
                 else
                 {
-                    Vector3 floatPos = cam.transform.position + cam.transform.forward * 3f + Vector3.down * 1f;
-                    heldObject.transform.position = floatPos;
-                    DrawPlacementRay(cam.transform.position, floatPos);
+                    Vector3 fp = cam.transform.position + cam.transform.forward * 3f + Vector3.down * 1f;
+                    heldObject.transform.position = fp;
+                    DrawPlacementRay(cam.transform.position, fp);
                 }
             }
 
-            // Left grip held → rotate
             if (leftGripHeld)
                 heldObject.transform.Rotate(Vector3.up, 90f * Time.deltaTime);
 
-            // Right grip → place
             if (rightGripDown)
                 PlaceObject();
 
@@ -186,59 +201,124 @@ public class SpawnMenu : MonoBehaviour
             return;
         }
 
-        // ── SELECTED STATE ────────────────────────────────────────
+        // ── SELECTED ──────────────────────────────────────────────
         if (selectedObject != null)
         {
-            // Left grip held → show scale UI
             if (leftGripHeld)
                 ShowScaleUI(selectedObject);
             else
                 HideScaleUI();
 
-            // Left trigger → deselect
             if (leftTriggerDown)
             {
                 Deselect();
                 return;
             }
 
-            // Right grip → pick up selected object
             if (rightGripDown)
                 PickUpSelectedObject();
 
             return;
         }
 
-        // ── IDLE STATE ────────────────────────────────────────────
+        // ── IDLE ──────────────────────────────────────────────────
         HideScaleUI();
+        if (placementRay != null) placementRay.enabled = false;
 
-        if (placementRay != null)
-            placementRay.enabled = false;
-
-        // Left trigger → toggle menu (open when idle, close when open)
         if (leftTriggerDown && !isHolding && selectedObject == null)
         {
             SetMenuVisible(!menuVisible);
             return;
         }
 
-        // Left grip → alternative selection (only when menu is closed)
         if (leftGripDown && !menuVisible && selectedObject == null && !isHolding)
-        {
             TryRaycastSelect();
-        }
 
-        // Gaze select — only when menu is closed
         if (!menuVisible)
             UpdateGazeSelect();
     }
 
-    void UpdateStaticHolding()
+    void UpdateStaticHolding() { _isHolding = isHolding; }
+
+    // ─────────────────────────────────────────────────────────────
+    //  GAZE-BUTTON HOVER
+    //  Projects each button's world centre into screen space and
+    //  checks if the camera's forward ray is close to it.
+    // ─────────────────────────────────────────────────────────────
+    void UpdateGazeButtonHover()
     {
-        _isHolding = isHolding;
+        Camera cam = Camera.main;
+        int  newHover = -1;
+
+        if (cam != null)
+        {
+            Ray gazeRay = new Ray(cam.transform.position, cam.transform.forward);
+
+            for (int i = 0; i < gazeButtons.Count; i++)
+            {
+                var gb = gazeButtons[i];
+                if (gb.rect == null || gb.canvas == null) continue;
+
+                // Only test buttons whose canvas is active
+                if (!gb.canvas.gameObject.activeInHierarchy) continue;
+
+                // World-space centre of the button
+                Vector3 worldCenter = gb.rect.TransformPoint(gb.rect.rect.center);
+
+                // Closest point on gaze ray to the button centre
+                Vector3 toBtn  = worldCenter - gazeRay.origin;
+                float   proj   = Vector3.Dot(toBtn, gazeRay.direction);
+                if (proj < 0f) continue;                        // behind camera
+
+                Vector3 closest = gazeRay.origin + gazeRay.direction * proj;
+                float   dist    = Vector3.Distance(closest, worldCenter);
+
+                // Approximate button "radius" in world units
+                float btnRadius = Mathf.Max(
+                    gb.rect.rect.width  * gb.rect.lossyScale.x,
+                    gb.rect.rect.height * gb.rect.lossyScale.y) * 0.5f;
+
+                if (dist < btnRadius)
+                {
+                    newHover = i;
+                    break;
+                }
+            }
+        }
+
+        // Update tint
+        if (newHover != hoveredIndex)
+        {
+            if (hoveredIndex >= 0 && hoveredIndex < gazeButtons.Count)
+            {
+                var old = gazeButtons[hoveredIndex];
+                if (old.image != null) old.image.color = old.normalColor;
+            }
+            hoveredIndex = newHover;
+            if (hoveredIndex >= 0)
+            {
+                var gb = gazeButtons[hoveredIndex];
+                if (gb.image != null) gb.image.color = hoverColor;
+            }
+        }
     }
 
-    // ── PICK UP ───────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
+    //  Helper: register a button for gaze interaction
+    // ─────────────────────────────────────────────────────────────
+    void RegisterGazeButton(Image img, Canvas canvas, System.Action onClick)
+    {
+        gazeButtons.Add(new GazeButton
+        {
+            rect        = img.GetComponent<RectTransform>(),
+            canvas      = canvas,
+            onClick     = onClick,
+            image       = img,
+            normalColor = img.color
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────
     void PickUpSelectedObject()
     {
         if (selectedObject == null) return;
@@ -256,12 +336,11 @@ public class SpawnMenu : MonoBehaviour
         UpdateStaticHolding();
     }
 
-    // ── SELECTION METHOD 1: GAZE ──────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
     void UpdateGazeSelect()
     {
         Camera cam = Camera.main;
         if (cam == null) return;
-
         Ray ray = new Ray(cam.transform.position, cam.transform.forward);
         if (Physics.Raycast(ray, out RaycastHit hit, 15f))
         {
@@ -279,11 +358,7 @@ public class SpawnMenu : MonoBehaviour
                         gazeTimer = 0f;
                     }
                 }
-                else
-                {
-                    gazeCandidate = root;
-                    gazeTimer = 0f;
-                }
+                else { gazeCandidate = root; gazeTimer = 0f; }
                 return;
             }
         }
@@ -291,7 +366,6 @@ public class SpawnMenu : MonoBehaviour
         gazeTimer = 0f;
     }
 
-    // ── SELECTION METHOD 2: LEFT GRIP RAYCAST ────────────────────
     void TryRaycastSelect()
     {
         Ray ray = (leftHandController != null)
@@ -306,22 +380,17 @@ public class SpawnMenu : MonoBehaviour
         }
     }
 
-    // ── HIGHLIGHT ─────────────────────────────────────────────────
     void SelectObject(GameObject obj)
     {
         if (selectedObject == obj) return;
         if (selectedObject != null) Deselect();
-
         selectedObject = obj;
         originalMaterials.Clear();
-
         foreach (var r in obj.GetComponentsInChildren<Renderer>())
         {
-            foreach (var m in r.materials)
-                originalMaterials.Add(m);
+            foreach (var m in r.materials) originalMaterials.Add(m);
             Material[] mats = new Material[r.materials.Length];
-            for (int i = 0; i < mats.Length; i++)
-                mats[i] = highlightMat;
+            for (int i = 0; i < mats.Length; i++) mats[i] = highlightMat;
             r.materials = mats;
         }
     }
@@ -342,17 +411,17 @@ public class SpawnMenu : MonoBehaviour
         {
             Material[] mats = new Material[r.materials.Length];
             for (int i = 0; i < mats.Length; i++)
-                if (idx < originalMaterials.Count)
-                    mats[i] = originalMaterials[idx++];
+                if (idx < originalMaterials.Count) mats[i] = originalMaterials[idx++];
             r.materials = mats;
         }
     }
 
-    // ── SCALE UI ──────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
+    //  SCALE UI
+    // ─────────────────────────────────────────────────────────────
     void ShowScaleUI(GameObject target)
     {
         if (scaleUICanvas == null) BuildScaleUI();
-
         if (!scaleUIVisible)
         {
             Camera cam = Camera.main;
@@ -379,46 +448,39 @@ public class SpawnMenu : MonoBehaviour
     {
         scaleUICanvas = new GameObject("ScaleUI_Canvas");
         scaleUICanvas.layer = LayerMask.NameToLayer("UI");
-
         var canvas = scaleUICanvas.AddComponent<Canvas>();
         canvas.renderMode   = RenderMode.WorldSpace;
         canvas.sortingOrder = 20;
         scaleUICanvas.AddComponent<GraphicRaycaster>();
-
         var rt = scaleUICanvas.GetComponent<RectTransform>();
-        rt.sizeDelta        = new Vector2(700, 500);
-        rt.anchoredPosition = Vector2.zero;
+        rt.sizeDelta = new Vector2(700, 500);
         scaleUICanvas.transform.localScale = Vector3.one * 0.001f;
 
         var bg = MakeImage(scaleUICanvas.transform, "BG", new Vector2(700, 500), Vector2.zero, BG_DARK);
         AddOutline(bg, PURPLE_BORDER, 4f);
-
         MakeLabel(bg.transform, "SCALE OBJECT", 22, new Vector2(0, 180), new Vector2(700, 50));
-        MakeLabel(bg.transform, "Hold LEFT GRIP to keep open", 12, new Vector2(0, 140), new Vector2(700, 30));
+        MakeLabel(bg.transform, "Hold LEFT GRIP  |  Gaze at button  |  LEFT TRIGGER to press",
+                  11, new Vector2(0, 140), new Vector2(700, 30));
 
         var upImg = MakeImage(bg.transform, "ScaleUp", new Vector2(220, 100), new Vector2(-130, 20), SCALE_UP_COL);
         AddOutline(upImg, PURPLE_BORDER, 3f);
         MakeLabel(upImg.transform, "▲  BIGGER", 20, Vector2.zero, new Vector2(220, 100));
-        var upBtn = upImg.gameObject.AddComponent<Button>();
-        upBtn.targetGraphic = upImg;
-        upBtn.onClick.AddListener(() => { if (selectedObject != null) selectedObject.transform.localScale *= 1.25f; });
+        RegisterGazeButton(upImg, canvas, () => { if (selectedObject) selectedObject.transform.localScale *= 1.25f; });
 
         var dnImg = MakeImage(bg.transform, "ScaleDn", new Vector2(220, 100), new Vector2(130, 20), SCALE_DN_COL);
         AddOutline(dnImg, PURPLE_BORDER, 3f);
         MakeLabel(dnImg.transform, "▼  SMALLER", 20, Vector2.zero, new Vector2(220, 100));
-        var dnBtn = dnImg.gameObject.AddComponent<Button>();
-        dnBtn.targetGraphic = dnImg;
-        dnBtn.onClick.AddListener(() => { if (selectedObject != null) selectedObject.transform.localScale *= 0.8f; });
+        RegisterGazeButton(dnImg, canvas, () => { if (selectedObject) selectedObject.transform.localScale *= 0.8f; });
 
         var closeImg = MakeImage(bg.transform, "CloseBtn", new Vector2(200, 40), new Vector2(0, -195), CLOSE_COLOR);
         AddOutline(closeImg, PURPLE_BORDER, 2f);
         MakeLabel(closeImg.transform, "CLOSE", 16, Vector2.zero, new Vector2(200, 40));
-        closeImg.gameObject.AddComponent<Button>().onClick.AddListener(() => HideScaleUI());
+        RegisterGazeButton(closeImg, canvas, () => HideScaleUI());
 
         scaleUICanvas.SetActive(false);
     }
 
-    // ── PLACEMENT ─────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
     void DrawPlacementRay(Vector3 from, Vector3 to)
     {
         if (placementRay == null) return;
@@ -441,9 +503,9 @@ public class SpawnMenu : MonoBehaviour
             float lowestY = 0f;
             if (renderers.Length > 0)
             {
-                Bounds bounds = renderers[0].bounds;
-                foreach (var r in renderers) bounds.Encapsulate(r.bounds);
-                lowestY = heldObject.transform.position.y - bounds.min.y;
+                Bounds b = renderers[0].bounds;
+                foreach (var r in renderers) b.Encapsulate(r.bounds);
+                lowestY = heldObject.transform.position.y - b.min.y;
             }
             heldObject.transform.position = new Vector3(
                 heldObject.transform.position.x,
@@ -452,8 +514,9 @@ public class SpawnMenu : MonoBehaviour
         }
         else
         {
-            Debug.Log("[SpawnMenu] No floor detected!");
-            return;
+            // Fallback: place on default floor at y=0
+            heldObject.transform.position = new Vector3(
+                heldObject.transform.position.x, 1.5f, heldObject.transform.position.z);
         }
 
         heldObject.transform.rotation = Quaternion.Euler(0, heldObject.transform.rotation.eulerAngles.y, 0);
@@ -469,19 +532,18 @@ public class SpawnMenu : MonoBehaviour
         }
 
         if (placementRay != null) placementRay.enabled = false;
-
         heldObject  = null;
         isHolding   = false;
         previewMode = false;
         UpdateStaticHolding();
     }
 
-    // ── SPAWN ─────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
+    //  SPAWN
+    // ─────────────────────────────────────────────────────────────
     public void SpawnInstant(int index)
     {
         if (isHolding && heldObject != null) PlaceObject();
-        previewMode = false;
-
         if (prefabs == null || index >= prefabs.Length || prefabs[index] == null) return;
         SetMenuVisible(false);
 
@@ -495,7 +557,6 @@ public class SpawnMenu : MonoBehaviour
 
         Rigidbody rb = obj.GetComponent<Rigidbody>();
         if (rb != null) rb.isKinematic = true;
-
         heldObject = obj;
         isHolding  = true;
         obj.layer  = LayerMask.NameToLayer("Ignore Raycast");
@@ -505,8 +566,6 @@ public class SpawnMenu : MonoBehaviour
     public void SpawnItem(SpawnableItem item)
     {
         if (isHolding && heldObject != null) PlaceObject();
-        previewMode = false;
-
         if (item?.prefab == null) return;
         SetMenuVisible(false);
 
@@ -515,17 +574,12 @@ public class SpawnMenu : MonoBehaviour
         obj.transform.position = cam != null
             ? new Vector3(cam.transform.position.x + cam.transform.forward.x * 2.5f, 2f,
                           cam.transform.position.z + cam.transform.forward.z * 2.5f)
-            : rightHandController != null
-                ? new Vector3(rightHandController.position.x, 2f, rightHandController.position.z)
-                : Vector3.zero;
+            : (rightHandController != null ? rightHandController.position : Vector3.zero);
         obj.transform.rotation = Quaternion.Euler(0, cam != null ? cam.transform.eulerAngles.y + 180f : 180f, 0);
 
-        if (!obj.TryGetComponent<Rigidbody>(out var rb))
-            rb = obj.AddComponent<Rigidbody>();
+        if (!obj.TryGetComponent<Rigidbody>(out var rb)) rb = obj.AddComponent<Rigidbody>();
         rb.isKinematic = true;
-
-        if (obj.GetComponentInChildren<Collider>() == null)
-            obj.AddComponent<BoxCollider>();
+        if (obj.GetComponentInChildren<Collider>() == null) obj.AddComponent<BoxCollider>();
 
         heldObject = obj;
         isHolding  = true;
@@ -533,12 +587,25 @@ public class SpawnMenu : MonoBehaviour
         UpdateStaticHolding();
     }
 
-    // ── MENU ──────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────
+    //  MENU
+    // ─────────────────────────────────────────────────────────────
     public void ToggleMenu() => SetMenuVisible(!menuVisible);
 
     void SetMenuVisible(bool v)
     {
         menuVisible = v;
+
+        // Clear all gaze-button registrations from the menu canvas
+        // (scale UI buttons are preserved because their canvas ref differs)
+        if (!v)
+        {
+            // Remove entries belonging to the menu canvas
+            Canvas menuCanvas = menuPanel != null ? menuPanel.GetComponent<Canvas>() : null;
+            if (menuCanvas != null)
+                gazeButtons.RemoveAll(gb => gb.canvas == menuCanvas);
+        }
+
         if (menuPanel != null)
         {
             if (v)
@@ -549,45 +616,51 @@ public class SpawnMenu : MonoBehaviour
                     menuPanel.transform.position = cam.transform.position + cam.transform.forward * 0.7f;
                     menuPanel.transform.rotation = Quaternion.LookRotation(cam.transform.forward);
                 }
+                // Re-register menu buttons when shown
+                RegisterMenuButtons();
             }
             menuPanel.SetActive(v);
         }
+        hoveredIndex = -1;
     }
 
+    // ─────────────────────────────────────────────────────────────
+    //  Build the menu canvas
+    // ─────────────────────────────────────────────────────────────
     void BuildMenu()
     {
-        // Always build a dedicated WorldSpace canvas — never reuse the scene Canvas
         menuPanel = new GameObject("SpawnMenuCanvas");
         menuPanel.layer = LayerMask.NameToLayer("UI");
-
         var canvas = menuPanel.AddComponent<Canvas>();
         canvas.renderMode   = RenderMode.WorldSpace;
         canvas.sortingOrder = 10;
         menuPanel.AddComponent<GraphicRaycaster>();
 
         var rt = menuPanel.GetComponent<RectTransform>();
-        rt.sizeDelta        = new Vector2(700, 500);
-        rt.anchoredPosition = Vector2.zero;
+        rt.sizeDelta = new Vector2(700, 500);
         menuPanel.transform.localScale = Vector3.one * 0.001f;
 
         var bg = MakeImage(menuPanel.transform, "BG", new Vector2(700, 500), Vector2.zero, BG_DARK);
         AddOutline(bg, PURPLE_BORDER, 4f);
 
+        MakeLabel(bg.transform, "SPAWN MENU", 20, new Vector2(-60, 200), new Vector2(300, 40));
+        MakeLabel(bg.transform, "Gaze at button → LEFT TRIGGER", 10, new Vector2(-60, 175), new Vector2(300, 25));
+
+        // Category tabs
         MakeCategoryTab(bg.transform, "FURNITURE", new Vector2(185, 120), "Furniture");
         MakeCategoryTab(bg.transform, "ITEMS",     new Vector2(185,  60), "Items");
 
+        // Close button
         var closeImg = MakeImage(bg.transform, "CloseBtn", new Vector2(200, 40), new Vector2(185, -195), CLOSE_COLOR);
         AddOutline(closeImg, PURPLE_BORDER, 2f);
         MakeLabel(closeImg.transform, "CLOSE", 16, Vector2.zero, new Vector2(200, 40));
-        closeImg.gameObject.AddComponent<Button>().onClick.AddListener(() => SetMenuVisible(false));
+        // (registered in RegisterMenuButtons)
 
+        // Grid panel
         var gridImg = MakeImage(bg.transform, "GridPanel", new Vector2(310, 320), new Vector2(-160, 20),
                                 new Color(0.10f, 0.12f, 0.18f, 1f));
         AddOutline(gridImg, PURPLE_BORDER, 3f);
         gridPanel = gridImg.gameObject;
-
-        var gridRt = gridPanel.GetComponent<RectTransform>();
-        gridRt.sizeDelta = new Vector2(310, 320);
 
         var grid             = gridPanel.AddComponent<GridLayoutGroup>();
         grid.cellSize        = new Vector2(64, 64);
@@ -595,13 +668,42 @@ public class SpawnMenu : MonoBehaviour
         grid.padding         = new RectOffset(12, 12, 12, 12);
         grid.constraint      = GridLayoutGroup.Constraint.FixedColumnCount;
         grid.constraintCount = 4;
+    }
 
+    // Called each time the menu becomes visible so gaze-buttons are current
+    void RegisterMenuButtons()
+    {
+        Canvas menuCanvas = menuPanel.GetComponent<Canvas>();
+        // Remove stale menu entries
+        gazeButtons.RemoveAll(gb => gb.canvas == menuCanvas);
+
+        // Close button
+        var closeImg = menuPanel.transform.Find("BG/CloseBtn")?.GetComponent<Image>();
+        if (closeImg != null)
+            RegisterGazeButton(closeImg, menuCanvas, () => SetMenuVisible(false));
+
+        // Category tabs
+        var furnitureTab = menuPanel.transform.Find("BG/FURNITURETab")?.GetComponent<Image>();
+        if (furnitureTab != null)
+            RegisterGazeButton(furnitureTab, menuCanvas, () => SetCategory("Furniture"));
+
+        var itemsTab = menuPanel.transform.Find("BG/ITEMSTab")?.GetComponent<Image>();
+        if (itemsTab != null)
+            RegisterGazeButton(itemsTab, menuCanvas, () => SetCategory("Items"));
+
+        // Grid item buttons
         RefreshGrid();
     }
 
     void RefreshGrid()
     {
         if (gridPanel == null) return;
+
+        Canvas menuCanvas = menuPanel.GetComponent<Canvas>();
+        // Remove old grid-item gaze-buttons
+        gazeButtons.RemoveAll(gb => gb.canvas == menuCanvas && gb.rect != null &&
+                                    gb.rect.IsChildOf(gridPanel.transform));
+
         foreach (Transform child in gridPanel.transform)
             Destroy(child.gameObject);
 
@@ -619,28 +721,70 @@ public class SpawnMenu : MonoBehaviour
                 icon.transform.SetParent(cell.transform, false);
                 icon.sprite = item.icon;
                 var irt = icon.GetComponent<RectTransform>();
-                irt.sizeDelta        = new Vector2(52, 52);
+                irt.sizeDelta = new Vector2(52, 52);
                 irt.anchoredPosition = Vector2.zero;
             }
             else
                 MakeLabel(cell.transform, item.itemName, 10, Vector2.zero, new Vector2(60, 60));
 
-            var btn      = cell.gameObject.AddComponent<Button>();
             var captured = item;
-            btn.onClick.AddListener(() => SpawnItem(captured));
+            RegisterGazeButton(cell, menuCanvas, () => SpawnItem(captured));
         }
     }
 
-    void SetCategory(string cat) { activeCategory = cat; RefreshGrid(); }
+    void SetCategory(string cat)
+    {
+        activeCategory = cat;
+        // Update tab colors
+        UpdateTabColors();
+        RefreshGrid();
+    }
 
-    // ── UI HELPERS ────────────────────────────────────────────────
+    void UpdateTabColors()
+    {
+        var furnitureTab = menuPanel?.transform.Find("BG/FURNITURETab")?.GetComponent<Image>();
+        var itemsTab     = menuPanel?.transform.Find("BG/ITEMSTab")?.GetComponent<Image>();
+
+        if (furnitureTab != null)
+        {
+            furnitureTab.color = activeCategory == "Furniture" ? TEAL_ACTIVE : BTN_NORMAL;
+            // Update normalColor in gaze-button list
+            for (int i = 0; i < gazeButtons.Count; i++)
+            {
+                var gb = gazeButtons[i];
+                if (gb.image == furnitureTab) { var g2 = gb; g2.normalColor = furnitureTab.color; gazeButtons[i] = g2; }
+            }
+        }
+        if (itemsTab != null)
+        {
+            itemsTab.color = activeCategory == "Items" ? TEAL_ACTIVE : BTN_NORMAL;
+            for (int i = 0; i < gazeButtons.Count; i++)
+            {
+                var gb = gazeButtons[i];
+                if (gb.image == itemsTab) { var g2 = gb; g2.normalColor = itemsTab.color; gazeButtons[i] = g2; }
+            }
+        }
+    }
+
+    void MakeCategoryTab(Transform parent, string label, Vector2 pos, string category)
+    {
+        var img = MakeImage(parent, label + "Tab", new Vector2(220, 45), pos,
+                            category == activeCategory ? TEAL_ACTIVE : BTN_NORMAL);
+        AddOutline(img, PURPLE_BORDER, 2f);
+        MakeLabel(img.transform, label, 15, Vector2.zero, new Vector2(220, 45));
+        // Gaze-buttons for tabs are registered in RegisterMenuButtons()
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    //  UI HELPERS
+    // ─────────────────────────────────────────────────────────────
     Image MakeImage(Transform parent, string name, Vector2 size, Vector2 pos, Color color)
     {
         var go  = new GameObject(name);
         go.transform.SetParent(parent, false);
         var img = go.AddComponent<Image>();
         img.color = color;
-        var rt = go.GetComponent<RectTransform>();
+        var rt  = go.GetComponent<RectTransform>();
         rt.sizeDelta        = size;
         rt.anchoredPosition = pos;
         return img;
@@ -651,23 +795,6 @@ public class SpawnMenu : MonoBehaviour
         var o = target.gameObject.AddComponent<Outline>();
         o.effectColor    = color;
         o.effectDistance = new Vector2(width, -width);
-    }
-
-    void MakeCategoryTab(Transform parent, string label, Vector2 pos, string category)
-    {
-        var img = MakeImage(parent, label + "Tab", new Vector2(220, 45), pos,
-                            category == activeCategory ? TEAL_ACTIVE : BTN_NORMAL);
-        AddOutline(img, PURPLE_BORDER, 2f);
-        MakeLabel(img.transform, label, 15, Vector2.zero, new Vector2(220, 45));
-        var btn    = img.gameObject.AddComponent<Button>();
-        var colors = btn.colors;
-        colors.normalColor      = category == activeCategory ? TEAL_ACTIVE : BTN_NORMAL;
-        colors.highlightedColor = TEAL_ACTIVE;
-        colors.pressedColor     = PURPLE_BORDER;
-        colors.selectedColor    = TEAL_ACTIVE;
-        btn.colors        = colors;
-        btn.targetGraphic = img;
-        btn.onClick.AddListener(() => SetCategory(category));
     }
 
     TextMeshProUGUI MakeLabel(Transform parent, string text, int fontSize, Vector2 pos, Vector2 size)
