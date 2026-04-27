@@ -49,7 +49,9 @@ public class TravelManager : MonoBehaviour
     {
         if (lineRenderer == null || rightHandController == null) return;
 
-        if (SpawnMenu.isBusy)
+        // Only block teleportation when holding objects or an object is selected
+        // Allow teleportation when menu is open
+        if (SpawnMenu.IsBusy())
         {
             lineRenderer.enabled = false;
             if (teleportIndicator != null)
