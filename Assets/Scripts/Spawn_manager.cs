@@ -1,6 +1,10 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.XR.Interaction.Toolkit;
+
+/*
+GOAL: position user 
+*/
 public class Spawn_manager : MonoBehaviour
 {
     public Transform tentCenter;    //reference point to pos in scene
