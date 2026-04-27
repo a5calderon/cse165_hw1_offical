@@ -8,7 +8,10 @@ using UnityEngine.InputSystem;
 
 public class SpawnMenu : MonoBehaviour
 {
-    private static bool isBusy = false;
+    // ── Static state queries ──────────────────────────────────────
+    private static bool _isHolding = false;
+    public static bool IsHoldingObject() => _isHolding;
+    public static bool IsBusy() => _isHolding;
 
     [Header("References")]
     public GameObject[] prefabs;
@@ -66,11 +69,6 @@ public class SpawnMenu : MonoBehaviour
     static readonly Color SCALE_UP_COL  = new Color(0.10f, 0.70f, 0.35f, 0.95f);
     static readonly Color SCALE_DN_COL  = new Color(0.80f, 0.20f, 0.20f, 0.95f);
 
-    public static bool IsBusy()
-    {
-        return isBusy;
-    }
-
     void OnEnable()
     {
         try
@@ -107,7 +105,12 @@ public class SpawnMenu : MonoBehaviour
         highlightMat.SetColor("_EmissionColor", HIGHLIGHT_COL * 0.6f);
 
         if (menuPanel != null)
-            menuPanel.SetActive(false);
+        {
+            Debug.LogWarning("[SpawnMenu] menuPanel was assigned in the Inspector. " +
+                "Clearing it to avoid toggling the scene Canvas. " +
+                "A dedicated menu canvas will be created at runtime.");
+            menuPanel = null;
+        }
 
         StartCoroutine(BuildMenuNextFrame());
     }
@@ -149,8 +152,7 @@ public class SpawnMenu : MonoBehaviour
         rightGripWasPressed   = rightGrip;
         leftGripHeld          = leftGrip;
 
-        // Update busy state - only block teleportation when holding objects or menu is visible
-        UpdateBusyState();
+        UpdateStaticHolding();
 
         // ── HOLDING STATE ─────────────────────────────────────────
         if (isHolding && heldObject != null)
@@ -193,7 +195,7 @@ public class SpawnMenu : MonoBehaviour
             else
                 HideScaleUI();
 
-            // Left trigger → deselect (does NOT open menu)
+            // Left trigger → deselect
             if (leftTriggerDown)
             {
                 Deselect();
@@ -213,30 +215,27 @@ public class SpawnMenu : MonoBehaviour
         if (placementRay != null)
             placementRay.enabled = false;
 
-        // Left trigger → OPEN menu (only if menu is closed and nothing selected)
-        if (leftTriggerDown && !menuVisible && selectedObject == null && !isHolding)
+        // Left trigger → toggle menu (open when idle, close when open)
+        if (leftTriggerDown && !isHolding && selectedObject == null)
         {
-            SetMenuVisible(true);
+            SetMenuVisible(!menuVisible);
+            return;
         }
 
-        // Gaze select (method 1) — only when menu closed
-        if (!menuVisible)
-            UpdateGazeSelect();
-
-        // Left trigger raycast select (method 2) — only when menu closed
-        // Use left trigger held for a moment, or separate button? 
-        // For now using left grip as alternative selection method
+        // Left grip → alternative selection (only when menu is closed)
         if (leftGripDown && !menuVisible && selectedObject == null && !isHolding)
         {
             TryRaycastSelect();
         }
+
+        // Gaze select — only when menu is closed
+        if (!menuVisible)
+            UpdateGazeSelect();
     }
 
-    void UpdateBusyState()
+    void UpdateStaticHolding()
     {
-        // Only block teleportation when holding objects OR menu is visible
-        // Selected objects don't block teleportation anymore
-        isBusy = isHolding || menuVisible;
+        _isHolding = isHolding;
     }
 
     // ── PICK UP ───────────────────────────────────────────────────
@@ -254,7 +253,7 @@ public class SpawnMenu : MonoBehaviour
         toPickUp.layer = LayerMask.NameToLayer("Ignore Raycast");
         heldObject = toPickUp;
         isHolding  = true;
-        UpdateBusyState();
+        UpdateStaticHolding();
     }
 
     // ── SELECTION METHOD 1: GAZE ──────────────────────────────────
@@ -292,10 +291,9 @@ public class SpawnMenu : MonoBehaviour
         gazeTimer = 0f;
     }
 
-    // ── SELECTION METHOD 2: LEFT GRIP RAYCAST ──────────────────
+    // ── SELECTION METHOD 2: LEFT GRIP RAYCAST ────────────────────
     void TryRaycastSelect()
     {
-        // Use left hand controller ray, fall back to camera
         Ray ray = (leftHandController != null)
             ? new Ray(leftHandController.position, leftHandController.forward)
             : new Ray(Camera.main.transform.position, Camera.main.transform.forward);
@@ -326,7 +324,6 @@ public class SpawnMenu : MonoBehaviour
                 mats[i] = highlightMat;
             r.materials = mats;
         }
-        UpdateBusyState();
     }
 
     void Deselect()
@@ -336,14 +333,6 @@ public class SpawnMenu : MonoBehaviour
         originalMaterials.Clear();
         selectedObject = null;
         HideScaleUI();
-        StartCoroutine(ClearBusyNextFrame());
-    }
-
-    IEnumerator ClearBusyNextFrame()
-    {
-        yield return new WaitForEndOfFrame();
-        yield return null;
-        UpdateBusyState();
     }
 
     void RestoreMaterials(GameObject obj)
@@ -484,7 +473,7 @@ public class SpawnMenu : MonoBehaviour
         heldObject  = null;
         isHolding   = false;
         previewMode = false;
-        UpdateBusyState();
+        UpdateStaticHolding();
     }
 
     // ── SPAWN ─────────────────────────────────────────────────────
@@ -494,7 +483,7 @@ public class SpawnMenu : MonoBehaviour
         previewMode = false;
 
         if (prefabs == null || index >= prefabs.Length || prefabs[index] == null) return;
-        if (menuPanel != null) menuPanel.SetActive(false);
+        SetMenuVisible(false);
 
         GameObject obj = Instantiate(prefabs[index]);
         Camera cam = Camera.main;
@@ -510,7 +499,7 @@ public class SpawnMenu : MonoBehaviour
         heldObject = obj;
         isHolding  = true;
         obj.layer  = LayerMask.NameToLayer("Ignore Raycast");
-        UpdateBusyState();
+        UpdateStaticHolding();
     }
 
     public void SpawnItem(SpawnableItem item)
@@ -541,7 +530,7 @@ public class SpawnMenu : MonoBehaviour
         heldObject = obj;
         isHolding  = true;
         obj.layer  = LayerMask.NameToLayer("Ignore Raycast");
-        UpdateBusyState();
+        UpdateStaticHolding();
     }
 
     // ── MENU ──────────────────────────────────────────────────────
@@ -563,26 +552,23 @@ public class SpawnMenu : MonoBehaviour
             }
             menuPanel.SetActive(v);
         }
-        UpdateBusyState();
     }
 
     void BuildMenu()
     {
-        if (menuPanel == null)
-        {
-            menuPanel = new GameObject("SpawnMenuCanvas");
-            menuPanel.layer = LayerMask.NameToLayer("UI");
+        // Always build a dedicated WorldSpace canvas — never reuse the scene Canvas
+        menuPanel = new GameObject("SpawnMenuCanvas");
+        menuPanel.layer = LayerMask.NameToLayer("UI");
 
-            var canvas = menuPanel.AddComponent<Canvas>();
-            canvas.renderMode   = RenderMode.WorldSpace;
-            canvas.sortingOrder = 10;
-            menuPanel.AddComponent<GraphicRaycaster>();
+        var canvas = menuPanel.AddComponent<Canvas>();
+        canvas.renderMode   = RenderMode.WorldSpace;
+        canvas.sortingOrder = 10;
+        menuPanel.AddComponent<GraphicRaycaster>();
 
-            var rt = menuPanel.GetComponent<RectTransform>();
-            rt.sizeDelta        = new Vector2(700, 500);
-            rt.anchoredPosition = Vector2.zero;
-            menuPanel.transform.localScale = Vector3.one * 0.001f;
-        }
+        var rt = menuPanel.GetComponent<RectTransform>();
+        rt.sizeDelta        = new Vector2(700, 500);
+        rt.anchoredPosition = Vector2.zero;
+        menuPanel.transform.localScale = Vector3.one * 0.001f;
 
         var bg = MakeImage(menuPanel.transform, "BG", new Vector2(700, 500), Vector2.zero, BG_DARK);
         AddOutline(bg, PURPLE_BORDER, 4f);

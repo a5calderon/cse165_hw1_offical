@@ -21,6 +21,10 @@ public class TravelManager : MonoBehaviour
     private Vector3 teleportTarget;
     private bool    triggerWasPressed = false;
 
+    // Layer mask that excludes the TeleportIndicator and UI layers
+    // so the arc never "lands" on the indicator itself
+    private int raycastMask;
+
     void OnEnable()
     {
         try { rightTriggerAction?.action.Enable(); }
@@ -43,20 +47,18 @@ public class TravelManager : MonoBehaviour
         }
         if (teleportIndicator != null)
             teleportIndicator.SetActive(false);
+
+        raycastMask = ~(LayerMask.GetMask("Ignore Raycast") | LayerMask.GetMask("UI"));
     }
 
     void Update()
     {
         if (lineRenderer == null || rightHandController == null) return;
-
-        // Only block teleportation when holding objects or an object is selected
-        // Allow teleportation when menu is open
-        if (SpawnMenu.IsBusy())
+        if (SpawnMenu.IsHoldingObject())
         {
             lineRenderer.enabled = false;
             if (teleportIndicator != null)
                 teleportIndicator.SetActive(false);
-            // consume trigger so no phantom fire when busy clears
             ReadTrigger(out _, out _);
             return;
         }
@@ -72,6 +74,7 @@ public class TravelManager : MonoBehaviour
             try   { return rightTriggerAction.action.ReadValue<float>() > 0.5f; }
             catch { return rightTriggerAction.action.IsPressed(); }
         }
+        // Keyboard fallback for editor testing
         return Input.GetKey(KeyCode.F);
     }
 
@@ -106,7 +109,8 @@ public class TravelManager : MonoBehaviour
                 Vector3 prevPoint = startPos + startVel * tPrev + 0.5f * Physics.gravity * tPrev * tPrev;
                 Vector3 dir       = point - prevPoint;
 
-                if (Physics.Raycast(prevPoint, dir, out RaycastHit hit, dir.magnitude))
+                // Use raycastMask so we never hit the TeleportIndicator or UI
+                if (Physics.Raycast(prevPoint, dir.normalized, out RaycastHit hit, dir.magnitude, raycastMask))
                 {
                     teleportTarget = hit.point;
 
