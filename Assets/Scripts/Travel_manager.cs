@@ -48,7 +48,9 @@ public class TravelManager : MonoBehaviour
         if (teleportIndicator != null)
             teleportIndicator.SetActive(false);
 
-        raycastMask = ~(LayerMask.GetMask("Ignore Raycast") | LayerMask.GetMask("UI"));
+       // raycastMask = ~(LayerMask.GetMask("Ignore Raycast") | LayerMask.GetMask("UI"));
+       raycastMask = LayerMask.GetMask("Floor");
+
     }
 
     void Update()

@@ -4,16 +4,6 @@ using TMPro;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine.InputSystem;
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  SpawnMenu – Fixed version
-//  Key changes:
-//   • Buttons are activated by GAZE + LEFT TRIGGER (no XR pointer needed)
-//   • A small reticle highlights the button you're looking at
-//   • Menu placement follows the camera each time it opens
-//   • Scale UI uses the same gaze+trigger scheme
-//   • All original game-logic kept intact
-// ─────────────────────────────────────────────────────────────────────────────
 public class SpawnMenu : MonoBehaviour
 {
     // ── Static state ──────────────────────────────────────────────
@@ -23,7 +13,7 @@ public class SpawnMenu : MonoBehaviour
 
     [Header("References")]
     public GameObject[]    prefabs;
-    public GameObject      menuPanel;          // kept for Inspector compat; overwritten at runtime
+    public GameObject      menuPanel;         
     public Transform       rightHandController;
     public Transform       leftHandController;
 
@@ -240,11 +230,6 @@ public class SpawnMenu : MonoBehaviour
 
     void UpdateStaticHolding() { _isHolding = isHolding; }
 
-    // ─────────────────────────────────────────────────────────────
-    //  GAZE-BUTTON HOVER
-    //  Projects each button's world centre into screen space and
-    //  checks if the camera's forward ray is close to it.
-    // ─────────────────────────────────────────────────────────────
     void UpdateGazeButtonHover()
     {
         Camera cam = Camera.main;
@@ -302,10 +287,6 @@ public class SpawnMenu : MonoBehaviour
             }
         }
     }
-
-    // ─────────────────────────────────────────────────────────────
-    //  Helper: register a button for gaze interaction
-    // ─────────────────────────────────────────────────────────────
     void RegisterGazeButton(Image img, Canvas canvas, System.Action onClick)
     {
         gazeButtons.Add(new GazeButton
@@ -317,8 +298,6 @@ public class SpawnMenu : MonoBehaviour
             normalColor = img.color
         });
     }
-
-    // ─────────────────────────────────────────────────────────────
     void PickUpSelectedObject()
     {
         if (selectedObject == null) return;
@@ -335,8 +314,6 @@ public class SpawnMenu : MonoBehaviour
         isHolding  = true;
         UpdateStaticHolding();
     }
-
-    // ─────────────────────────────────────────────────────────────
     void UpdateGazeSelect()
     {
         Camera cam = Camera.main;
@@ -415,10 +392,7 @@ public class SpawnMenu : MonoBehaviour
             r.materials = mats;
         }
     }
-
-    // ─────────────────────────────────────────────────────────────
     //  SCALE UI
-    // ─────────────────────────────────────────────────────────────
     void ShowScaleUI(GameObject target)
     {
         if (scaleUICanvas == null) BuildScaleUI();
@@ -480,7 +454,6 @@ public class SpawnMenu : MonoBehaviour
         scaleUICanvas.SetActive(false);
     }
 
-    // ─────────────────────────────────────────────────────────────
     void DrawPlacementRay(Vector3 from, Vector3 to)
     {
         if (placementRay == null) return;
@@ -538,9 +511,7 @@ public class SpawnMenu : MonoBehaviour
         UpdateStaticHolding();
     }
 
-    // ─────────────────────────────────────────────────────────────
     //  SPAWN
-    // ─────────────────────────────────────────────────────────────
     public void SpawnInstant(int index)
     {
         if (isHolding && heldObject != null) PlaceObject();
@@ -587,9 +558,7 @@ public class SpawnMenu : MonoBehaviour
         UpdateStaticHolding();
     }
 
-    // ─────────────────────────────────────────────────────────────
     //  MENU
-    // ─────────────────────────────────────────────────────────────
     public void ToggleMenu() => SetMenuVisible(!menuVisible);
 
     void SetMenuVisible(bool v)
@@ -623,10 +592,7 @@ public class SpawnMenu : MonoBehaviour
         }
         hoveredIndex = -1;
     }
-
-    // ─────────────────────────────────────────────────────────────
     //  Build the menu canvas
-    // ─────────────────────────────────────────────────────────────
     void BuildMenu()
     {
         menuPanel = new GameObject("SpawnMenuCanvas");
@@ -775,9 +741,7 @@ public class SpawnMenu : MonoBehaviour
         // Gaze-buttons for tabs are registered in RegisterMenuButtons()
     }
 
-    // ─────────────────────────────────────────────────────────────
     //  UI HELPERS
-    // ─────────────────────────────────────────────────────────────
     Image MakeImage(Transform parent, string name, Vector2 size, Vector2 pos, Color color)
     {
         var go  = new GameObject(name);
