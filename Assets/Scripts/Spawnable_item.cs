@@ -1,6 +1,6 @@
 using UnityEngine;
 /*
-GOAL: define custom data type
+GOAL: define custom data type for spawn menu
 */
 [System.Serializable]           //to show in inspector
 public class SpawnableItem
